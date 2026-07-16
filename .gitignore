@@ -1,0 +1,60 @@
+HELP.md
+
+# Build outputs
+/target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+/build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Maven wrapper
+/.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+/.idea/
+*.iws
+*.iml
+*.ipr
+
+# Eclipse / STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/
+
+# Frontend build/cache
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/frontend/release/
+/frontend/bundle-resources/
+/frontend/*.tsbuildinfo
+
+# Local temp/cache
+/.codex-npm-cache/
+/.codex-tmp/
+/.agents/
+/temp/
+
+# Local runtime data
+identifier.sqlite
+*.log
+*.pid
+
+# OS files
+.DS_Store
+Thumbs.db

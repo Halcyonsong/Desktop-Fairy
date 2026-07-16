@@ -1,0 +1,141 @@
+export type ChatRole = 'user' | 'assistant';
+export type ChatMessageStatus = 'completed' | 'interrupted' | 'error' | 'sending' | 'streaming';
+export type ChatEventType = 1001 | 1002 | 1003 | 1004 | 1005;
+export type ViewMode = 'chat' | 'settings';
+export type ModelProvider = string;
+
+export interface ChatSession {
+  sessionId: string;
+  title: string;
+  createTime: string;
+  updateTime: string;
+}
+
+export interface ChatMessageTiming {
+  requestStartedAt?: number;
+  firstReasoningAt?: number;
+  firstOutputAt?: number;
+  completedAt?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  status: ChatMessageStatus;
+  createTime: string;
+  timing?: ChatMessageTiming;
+}
+
+export interface ChatHistoryPage {
+  records: ChatMessage[];
+  nextCursor: number | null;
+  hasMore: boolean;
+  total: number;
+}
+
+export interface ChatEvent {
+  eventData: unknown;
+  eventType: ChatEventType;
+}
+
+export interface ApiResult<T> {
+  code: number;
+  message: string;
+  data: T;
+  timestamp: string;
+}
+
+export interface ModelSourceModelInput {
+  localId: string;
+  modelName: string;
+}
+
+export interface ModelSourceFormState {
+  sourceCode: string;
+  name: string;
+  provider: ModelProvider;
+  baseUrl: string;
+  apiKey: string;
+  models: ModelSourceModelInput[];
+}
+
+export interface ModelSourceListItem {
+  sourceCode: string;
+  name: string;
+  provider: ModelProvider;
+  baseUrl: string;
+  createTime: string;
+  updateTime: string;
+}
+
+export interface ModelSourceModelDetail {
+  id: number;
+  modelName: string;
+  createTime: string;
+  updateTime: string;
+}
+
+export interface SelectableModelSourceItem {
+  sourceCode: string;
+  sourceName: string;
+  models: ModelSourceModelDetail[];
+}
+
+export interface SelectableModelGroup {
+  provider: ModelProvider;
+  items: SelectableModelSourceItem[];
+}
+
+export interface ModelSourceDetail extends ModelSourceListItem {
+  apiKey: string;
+  models: ModelSourceModelDetail[];
+}
+
+export interface ModelSourceSavePayload {
+  sourceCode?: string;
+  name: string;
+  provider: ModelProvider;
+  baseUrl: string;
+  apiKey: string;
+  models: Array<{
+    modelName: string;
+  }>;
+}
+
+export interface ModelSourceTestPayload {
+  provider: ModelProvider;
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+}
+
+export interface ModelSourceTestResult {
+  success: boolean;
+  message: string;
+}
+
+export type LocalModelInstallStatus = 'idle' | 'installing' | 'success' | 'failed' | 'running' | 'stopped';
+
+export interface LocalModelScriptResult {
+  script: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface ChatModelConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface SendChatOptions {
+  sessionId: string;
+  question: string;
+  model?: ChatModelConfig | null;
+  onEvent: (event: ChatEvent) => void;
+  signal?: AbortSignal;
+}

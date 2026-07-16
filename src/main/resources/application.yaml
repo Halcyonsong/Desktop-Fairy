@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: Desktop-Fairy
+  profiles:
+    include:
+      - api
+      - log
+      - datasource
+      - prompt
+      - mp
+      - filepath
+
+
+
+server:
+  port: 18765
+  servlet:
+    context-path: /api

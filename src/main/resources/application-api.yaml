@@ -1,0 +1,11 @@
+spring:
+  ai:
+    model:
+      chat: openai
+
+    openai:
+      base-url: http://127.0.0.1:18080
+      api-key: local
+      chat:
+        options:
+          model: deepseek-v4-pro

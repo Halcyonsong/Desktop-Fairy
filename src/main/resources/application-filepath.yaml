@@ -1,0 +1,8 @@
+app:
+  storage:
+    db-path: ${user.home}/AppData/Local/DesktopFairy/data/fairy.db
+    log-path: ${user.home}/AppData/Local/DesktopFairy/logs/desktop-fairy.log
+
+desktop-fairy:
+  paths:
+    local-model-script-dir: ./local-model-scripts/bin

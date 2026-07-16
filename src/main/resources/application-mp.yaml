@@ -1,0 +1,7 @@
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # 控制台打印 SQL
+    map-underscore-to-camel-case: true  # 开启驼峰命名自动映射
+  global-config:
+    db-config:
+      id-type: auto

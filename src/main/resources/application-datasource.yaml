@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:${app.storage.db-path}
+    driver-class-name: org.sqlite.JDBC
+    username: ""
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      continue-on-error: true

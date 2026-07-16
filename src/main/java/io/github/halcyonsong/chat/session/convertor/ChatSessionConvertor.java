@@ -1,0 +1,10 @@
+package io.github.halcyonsong.chat.session.convertor;
+
+import io.github.halcyonsong.chat.session.pojo.entity.ChatSessionEntity;
+import io.github.halcyonsong.chat.session.pojo.vo.ChatSessionVO;
+import io.github.halcyonsong.common.converter.BaseConvertor;
+import org.mapstruct.Mapper;
+
+@Mapper(componentModel = "spring")
+public interface ChatSessionConvertor extends BaseConvertor<ChatSessionEntity, ChatSessionVO> {
+}
