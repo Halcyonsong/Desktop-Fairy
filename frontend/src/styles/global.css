@@ -3,4 +3,5 @@
 @import './layout.css';
 @import './session.css';
 @import './chat.css';
+@import './fairy.css';
 @import 'katex/dist/katex.min.css';

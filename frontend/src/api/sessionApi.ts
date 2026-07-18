@@ -57,7 +57,7 @@ export const sessionApi = {
     return normalizeHistoryPage(page);
   },
 
-  async sendChat({ sessionId, question, model, onEvent, signal }: SendChatOptions) {
+  async sendChat({ sessionId, question, systemPrompt, model, onEvent, signal }: SendChatOptions) {
     const response = await fetch(resolveApiUrl('/api/ai/chat/stream'), {
       method: 'POST',
       headers: jsonHeaders,
@@ -65,6 +65,7 @@ export const sessionApi = {
         chat: {
           sessionId,
           question,
+          systemPrompt: systemPrompt ?? '',
         },
         model: model ?? null,
       }),

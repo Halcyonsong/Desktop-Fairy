@@ -4,8 +4,8 @@ import io.github.halcyonsong.chat.stream.pojo.config.ModelConfig;
 import io.github.halcyonsong.modelsource.pojo.dto.ModelSourceCreateDTO;
 import io.github.halcyonsong.modelsource.pojo.dto.ModelSourceQueryDTO;
 import io.github.halcyonsong.modelsource.pojo.dto.ModelSourceUpdateDTO;
-import io.github.halcyonsong.modelsource.pojo.vo.ModelSourceDetailVO;
-import io.github.halcyonsong.modelsource.pojo.vo.ModelSourceVO;
+import io.github.halcyonsong.modelsource.pojo.vo.models.ModelSourceDetailVO;
+import io.github.halcyonsong.modelsource.pojo.vo.models.ModelSourceVO;
 
 import java.util.List;
 

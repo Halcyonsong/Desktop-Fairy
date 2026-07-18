@@ -15,7 +15,7 @@ frontend
 ├─ src/                    # Vue 页面、组件、状态、API 封装
 ├─ electron/               # Electron 主进程脚本与打包准备脚本
 ├─ dist/                   # 前端构建产物
-├─ bundle-resources/       # 打包前整理好的后端/JRE/脚本资源
+├─ bundle-staging/         # 打包前整理好的后端/JRE/脚本资源
 ├─ release/                # electron-builder 输出目录
 ├─ package.json            # 前端与打包配置
 ├─ vite.config.ts          # Vite 配置
@@ -72,7 +72,7 @@ npm run desktop:pack
 - 本地模型脚本目录
 - `runtime/` 下的 JRE
 
-这些资源会先被整理到 `bundle-resources/`，再由 electron-builder 打进安装包。
+这些资源会先被整理到 `bundle-staging/`，再由 electron-builder 打进安装包。
 
 ## 当前约定
 

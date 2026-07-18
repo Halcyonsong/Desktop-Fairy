@@ -20,7 +20,7 @@ set PROVIDER=local-llamacpp
 set API_KEY=local
 set MODEL_NAME=Qwen3.5-4B-UD-IQ2_XXS
 
-curl.exe -s http://127.0.0.1:%PORT%/v1/models | findstr /C:"%MODEL_NAME%" >nul 2>nul
+curl.exe -s http://127.0.0.1:%PORT%/v1/models >nul 2>nul
 if not errorlevel 1 (
     echo Local model service already running, skip install and startup.
     for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%PORT%" ^| findstr LISTENING') do (
@@ -154,9 +154,9 @@ if not defined LISTEN_PID (
     )
 ) else (
     echo Port %PORT% already in use, verify target model service...
-    curl.exe -s http://127.0.0.1:%PORT%/v1/models | findstr /C:"%MODEL_NAME%" >nul 2>nul
+    curl.exe -s http://127.0.0.1:%PORT%/v1/models >nul 2>nul
     if errorlevel 1 (
-        echo Port %PORT% is occupied by another service, or target model is not available.
+        echo Port %PORT% is occupied by another service, or target OpenAI-compatible service is unavailable.
         exit /b 1
     )
     > "%PID_FILE%" echo %LISTEN_PID%
@@ -165,7 +165,7 @@ if not defined LISTEN_PID (
 echo [7/8] Wait for service ready...
 set READY=
 for /l %%i in (1,1,30) do (
-    curl.exe -s http://127.0.0.1:%PORT%/v1/models | findstr /C:"%MODEL_NAME%" >nul 2>nul
+    curl.exe -s http://127.0.0.1:%PORT%/v1/models >nul 2>nul
     if not errorlevel 1 (
         set READY=1
         goto :ready_ok

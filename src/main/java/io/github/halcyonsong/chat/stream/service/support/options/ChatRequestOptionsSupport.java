@@ -17,8 +17,10 @@ public class ChatRequestOptionsSupport {
     private final ChatProperties chatProperties;
     private final ChatSummaryStore chatSummaryStore;
 
-    public String resolveSystemPrompt(String sessionId) {
-        String basePrompt = chatProperties.getChatSystemPrompt();
+    public String resolveSystemPrompt(String sessionId, String systemPromptOverride) {
+        String basePrompt = StringUtils.hasText(systemPromptOverride)
+                ? systemPromptOverride.trim()
+                : chatProperties.getChatSystemPrompt();
 
         if (!StringUtils.hasText(sessionId)) {
             return basePrompt;

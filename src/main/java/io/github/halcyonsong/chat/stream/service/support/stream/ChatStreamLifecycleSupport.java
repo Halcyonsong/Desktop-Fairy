@@ -51,11 +51,12 @@ public class ChatStreamLifecycleSupport {
 
         state.getFailed().set(true);
 
+        String errorTip = resolveServiceErrorMessage(throwable);
         String memoryText;
         if (state.getOutputBuilder().isEmpty()) {
-            memoryText = "本轮回答因服务异常中断，请稍后重试。";
+            memoryText = errorTip;
         } else {
-            memoryText = state.getOutputBuilder() + "\n\n[系统提示] 本轮回答因服务异常中断，以上内容可能不完整。";
+            memoryText = state.getOutputBuilder() + "\n\n[系统提示] " + errorTip + " 以上内容可能不完整。";
         }
 
         state.getErrorMessage().set(memoryText);
@@ -152,6 +153,63 @@ public class ChatStreamLifecycleSupport {
                     state.getSessionId(),
                     exception);
         }
+    }
+
+    private String resolveServiceErrorMessage(Throwable throwable) {
+        String rawMessage = extractThrowableMessage(throwable).toLowerCase();
+
+        if (rawMessage.contains("401") || rawMessage.contains("unauthorized")) {
+            return "模型服务认证失败，请检查 API Key 是否有效、是否过期，或供应商鉴权配置是否正确。";
+        }
+
+        if (rawMessage.contains("403") || rawMessage.contains("forbidden")) {
+            return "模型服务拒绝访问，请检查当前账号或模型权限。";
+        }
+
+        if (rawMessage.contains("404") || rawMessage.contains("not found")) {
+            return "模型服务地址不可用，请检查请求地址或接口路径是否正确。";
+        }
+
+        if (rawMessage.contains("429") || rawMessage.contains("too many requests")) {
+            return "模型服务请求过于频繁，或当前额度不足，请稍后重试。";
+        }
+
+        if (rawMessage.contains("500")
+                || rawMessage.contains("502")
+                || rawMessage.contains("503")
+                || rawMessage.contains("504")) {
+            return "模型服务暂时不可用，请稍后重试。";
+        }
+
+        if (rawMessage.contains("timed out")
+                || rawMessage.contains("timeout")
+                || rawMessage.contains("readtimeoutexception")
+                || rawMessage.contains("sockettimeoutexception")) {
+            return "模型服务响应超时，请稍后重试。";
+        }
+
+        if (rawMessage.contains("connection refused")
+                || rawMessage.contains("connectexception")
+                || rawMessage.contains("unknownhost")
+                || rawMessage.contains("failed to connect")) {
+            return "无法连接到模型服务，请检查请求地址和网络连接。";
+        }
+
+        return "模型服务调用失败，请稍后重试。";
+    }
+
+    private String extractThrowableMessage(Throwable throwable) {
+        StringBuilder builder = new StringBuilder();
+        Throwable current = throwable;
+
+        while (current != null) {
+            if (current.getMessage() != null) {
+                builder.append(current.getMessage()).append(" | ");
+            }
+            current = current.getCause();
+        }
+
+        return builder.toString();
     }
 
     // 异步压缩会话历史消息

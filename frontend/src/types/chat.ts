@@ -1,7 +1,6 @@
 export type ChatRole = 'user' | 'assistant';
 export type ChatMessageStatus = 'completed' | 'interrupted' | 'error' | 'sending' | 'streaming';
 export type ChatEventType = 1001 | 1002 | 1003 | 1004 | 1005;
-export type ViewMode = 'chat' | 'settings';
 export type ModelProvider = string;
 
 export interface ChatSession {
@@ -115,13 +114,32 @@ export interface ModelSourceTestResult {
   message: string;
 }
 
-export type LocalModelInstallStatus = 'idle' | 'installing' | 'success' | 'failed' | 'running' | 'stopped';
+export interface ModelSourceFetchModelsPayload {
+  provider: ModelProvider;
+  baseUrl: string;
+  apiKey: string;
+  modelName?: string;
+}
 
-export interface LocalModelScriptResult {
+export type LocalModelTaskStatus = 'IDLE' | 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+export type LocalModelActionType = 'install' | 'start' | 'stop';
+
+export interface LocalModelTaskLaunchResult {
+  taskId: string;
   script: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
+  status: Exclude<LocalModelTaskStatus, 'IDLE'>;
+}
+
+export interface LocalModelTaskDetail {
+  taskId: string;
+  script: string;
+  status: Exclude<LocalModelTaskStatus, 'IDLE'>;
+  exitCode?: number | null;
+  stdout?: string;
+  stderr?: string;
+  message?: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
 }
 
 export interface ChatModelConfig {
@@ -135,6 +153,7 @@ export interface ChatModelConfig {
 export interface SendChatOptions {
   sessionId: string;
   question: string;
+  systemPrompt?: string;
   model?: ChatModelConfig | null;
   onEvent: (event: ChatEvent) => void;
   signal?: AbortSignal;

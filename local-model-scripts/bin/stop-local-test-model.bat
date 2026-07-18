@@ -6,7 +6,6 @@ set APP_HOME=%LOCALAPPDATA%\DesktopFairy
 set RUN_DIR=%APP_HOME%\run
 set PID_FILE=%RUN_DIR%\local-test-model.pid
 set PORT=18080
-set MODEL_NAME=Qwen3.5-4B-UD-IQ2_XXS
 
 if exist "%PID_FILE%" (
     set /p TARGET_PID=<"%PID_FILE%"
@@ -35,7 +34,7 @@ if not defined LISTEN_PID (
     exit /b 0
 )
 
-curl.exe -s http://127.0.0.1:%PORT%/v1/models | findstr /C:"%MODEL_NAME%" >nul 2>nul
+curl.exe -s http://127.0.0.1:%PORT%/v1/models >nul 2>nul
 if errorlevel 1 (
     echo Port %PORT% is occupied by another service, skip stop to avoid killing unrelated process
     exit /b 1

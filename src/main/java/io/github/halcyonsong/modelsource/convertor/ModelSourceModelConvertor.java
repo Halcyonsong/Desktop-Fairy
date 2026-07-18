@@ -2,7 +2,7 @@ package io.github.halcyonsong.modelsource.convertor;
 
 import io.github.halcyonsong.common.converter.BaseConvertor;
 import io.github.halcyonsong.modelsource.pojo.entity.ModelSourceModelEntity;
-import io.github.halcyonsong.modelsource.pojo.vo.ModelSourceModelVO;
+import io.github.halcyonsong.modelsource.pojo.vo.models.ModelSourceModelVO;
 import org.mapstruct.Mapper;
 
 @Mapper(componentModel = "spring")

@@ -17,6 +17,15 @@ body {
   color: var(--color-text);
 }
 
+html[data-window-mode='fairy'] body,
+html[data-window-mode='fairy'] #app {
+  background: transparent !important;
+}
+
+html[data-window-mode='fairy'] body {
+  overflow: hidden;
+}
+
 button,
 textarea,
 input,

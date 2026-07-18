@@ -6,26 +6,36 @@ const STORAGE_KEY = 'desktop-fairy.chat-preferences.v1';
 interface ChatPreferencesSnapshot {
   temperatureInput: string;
   maxTokensInput: string;
+  systemPrompt: string;
+}
+
+function emptySnapshot(): ChatPreferencesSnapshot {
+  return {
+    temperatureInput: '',
+    maxTokensInput: '',
+    systemPrompt: '',
+  };
 }
 
 function loadSnapshot(): ChatPreferencesSnapshot {
   if (typeof window === 'undefined') {
-    return { temperatureInput: '', maxTokensInput: '' };
+    return emptySnapshot();
   }
 
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return { temperatureInput: '', maxTokensInput: '' };
+      return emptySnapshot();
     }
 
     const parsed = JSON.parse(raw) as Partial<ChatPreferencesSnapshot>;
     return {
       temperatureInput: typeof parsed.temperatureInput === 'string' ? parsed.temperatureInput : '',
       maxTokensInput: typeof parsed.maxTokensInput === 'string' ? parsed.maxTokensInput : '',
+      systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : '',
     };
   } catch {
-    return { temperatureInput: '', maxTokensInput: '' };
+    return emptySnapshot();
   }
 }
 
@@ -33,8 +43,11 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
   const snapshot = loadSnapshot();
   const temperatureInput = ref(snapshot.temperatureInput);
   const maxTokensInput = ref(snapshot.maxTokensInput);
+  const systemPrompt = ref(snapshot.systemPrompt);
 
-  const hasCustomRuntimeSettings = computed(() => Boolean(temperatureInput.value.trim() || maxTokensInput.value.trim()));
+  const hasCustomRuntimeSettings = computed(() =>
+    Boolean(temperatureInput.value.trim() || maxTokensInput.value.trim() || systemPrompt.value.trim()),
+  );
 
   function persist() {
     if (typeof window === 'undefined') {
@@ -44,8 +57,16 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
     const payload: ChatPreferencesSnapshot = {
       temperatureInput: temperatureInput.value,
       maxTokensInput: maxTokensInput.value,
+      systemPrompt: systemPrompt.value,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function syncFromStorage() {
+    const nextSnapshot = loadSnapshot();
+    temperatureInput.value = nextSnapshot.temperatureInput;
+    maxTokensInput.value = nextSnapshot.maxTokensInput;
+    systemPrompt.value = nextSnapshot.systemPrompt;
   }
 
   function setTemperatureInput(value: string) {
@@ -58,18 +79,27 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
     persist();
   }
 
+  function setSystemPrompt(value: string) {
+    systemPrompt.value = value;
+    persist();
+  }
+
   function resetRuntimeSettings() {
     temperatureInput.value = '';
     maxTokensInput.value = '';
+    systemPrompt.value = '';
     persist();
   }
 
   return {
     temperatureInput,
     maxTokensInput,
+    systemPrompt,
     hasCustomRuntimeSettings,
+    syncFromStorage,
     setTemperatureInput,
     setMaxTokensInput,
+    setSystemPrompt,
     resetRuntimeSettings,
   };
 });

@@ -3,9 +3,11 @@ import { computed, onMounted, ref } from 'vue';
 import { customText } from '@/config/customText';
 import AppearanceSection from '@/components/settings/appearance/AppearanceSection.vue';
 import ChatPreferencesSection from '@/components/settings/chat-preferences/ChatPreferencesSection.vue';
+import DesktopBehaviorSection from '@/components/settings/desktop-behavior/DesktopBehaviorSection.vue';
 import SettingsSectionPlaceholder from '@/components/settings/SettingsSectionPlaceholder.vue';
 import SettingsSidebar from '@/components/settings/SettingsSidebar.vue';
 import ModelSourceSection from '@/components/settings/model-source/ModelSourceSection.vue';
+import SystemActionsSection from '@/components/settings/system-actions/SystemActionsSection.vue';
 import { settingsSections } from '@/config/settingsSections';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
 import type { SettingsSectionKey } from '@/types/settings';
@@ -40,6 +42,8 @@ onMounted(() => {
         <ModelSourceSection v-if="activeSection === 'model-source'" :key="activeSection" />
         <ChatPreferencesSection v-else-if="activeSection === 'chat-preferences'" :key="activeSection" />
         <AppearanceSection v-else-if="activeSection === 'appearance'" :key="activeSection" />
+        <SystemActionsSection v-else-if="activeSection === 'system-actions'" :key="activeSection" />
+        <DesktopBehaviorSection v-else-if="activeSection === 'desktop-behavior'" :key="activeSection" />
 
         <div v-else :key="activeSection" class="settings-page__surface">
           <header class="settings-page__header settings-page__header--compact">

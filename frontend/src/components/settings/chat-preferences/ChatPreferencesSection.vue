@@ -14,6 +14,9 @@ const settingsSummary = computed(() => {
   if (chatPreferencesStore.maxTokensInput.trim()) {
     tags.push(`${customText.chatPreferences.maxTokensLabel} ${chatPreferencesStore.maxTokensInput.trim()}`);
   }
+  if (chatPreferencesStore.systemPrompt.trim()) {
+    tags.push(`${customText.chatPreferences.systemPromptLabel} 已设置`);
+  }
   return tags;
 });
 </script>
@@ -49,6 +52,17 @@ const settingsSummary = computed(() => {
         </div>
 
         <div class="settings-form-grid settings-form-grid--two-column">
+          <label class="settings-field settings-field--full">
+            <span>{{ customText.chatPreferences.systemPromptLabel }}</span>
+            <textarea
+              class="settings-field__textarea"
+              :value="chatPreferencesStore.systemPrompt"
+              rows="5"
+              :placeholder="customText.chatPreferences.systemPromptPlaceholder"
+              @input="chatPreferencesStore.setSystemPrompt(($event.target as HTMLTextAreaElement).value)"
+            />
+          </label>
+
           <label class="settings-field">
             <span>{{ customText.chatPreferences.temperatureLabel }}</span>
             <input
