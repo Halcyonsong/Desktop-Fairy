@@ -20,6 +20,7 @@ let fairyDragSession = null;
 let fairyDragging = false;
 let fairyWindowEnabled = false;
 let fairyDragTimer = null;
+let fairyDragLastCursor = null;
 
 function isDevMode() {
   return !app.isPackaged;
@@ -517,12 +518,15 @@ function updateFairyDragPosition(pointerScreenX, pointerScreenY) {
     return;
   }
 
-  const bounds = fairyWindow.getBounds();
+  // 使用偏移量方式：新窗口位置 = 当前光标位置 + (初始窗口位置 - 初始光标位置)
+  // 这种方式即使在 getCursorScreenPoint() 和 getBounds() 坐标系不一致（DPI 缩放）时，
+  // 由于 offset = bounds(DIP) - cursor(可能物理) 的混合值在后续 cursor + offset 中被抵消，
+  // 仍能计算出正确的窗口位置
   const next = clampFairyPosition(
-    fairyDragSession.startWindowX + (pointerScreenX - fairyDragSession.startPointerScreenX),
-    fairyDragSession.startWindowY + (pointerScreenY - fairyDragSession.startPointerScreenY),
-    bounds.width,
-    bounds.height,
+    fairyDragSession.offsetX + pointerScreenX,
+    fairyDragSession.offsetY + pointerScreenY,
+    fairyDragSession.windowWidth,
+    fairyDragSession.windowHeight,
   );
 
   fairyWindow.setPosition(next.x, next.y, false);
@@ -533,6 +537,7 @@ function stopFairyDragTimer() {
     clearInterval(fairyDragTimer);
     fairyDragTimer = null;
   }
+  fairyDragLastCursor = null;
 }
 
 function beginFairyDrag(event, payload) {
@@ -541,22 +546,26 @@ function beginFairyDrag(event, payload) {
     return;
   }
 
-  const startPointerScreenX = Number(payload?.screenX);
-  const startPointerScreenY = Number(payload?.screenY);
+  // 统一使用主进程的光标坐标和窗口边界，计算偏移量
   const cursorPoint = screen.getCursorScreenPoint();
   const bounds = targetWindow.getBounds();
 
+  // offset = 窗口位置 - 光标位置
+  // 后续 newPosition = cursor + offset = cursor + (window - cursorAtBegin)
+  // 即使坐标系不一致，offset 的"抵消"效应确保结果正确
   fairyDragSession = {
-    startPointerScreenX: Number.isFinite(startPointerScreenX) ? startPointerScreenX : cursorPoint.x,
-    startPointerScreenY: Number.isFinite(startPointerScreenY) ? startPointerScreenY : cursorPoint.y,
-    startWindowX: bounds.x,
-    startWindowY: bounds.y,
+    offsetX: bounds.x - cursorPoint.x,
+    offsetY: bounds.y - cursorPoint.y,
+    windowWidth: bounds.width,
+    windowHeight: bounds.height,
   };
+
+  fairyDragLastCursor = { x: cursorPoint.x, y: cursorPoint.y };
 
   targetWindow.setIgnoreMouseEvents(false);
   targetWindow.moveTop();
 
-  // 启动光标轮询定时器，在渲染端 pointer 事件丢失（如鼠标移出透明窗口）时仍能平滑拖拽
+  // 启动光标轮询定时器，在渲染端 pointer 事件丢失时仍能平滑拖拽
   stopFairyDragTimer();
   fairyDragTimer = setInterval(() => {
     if (!fairyDragSession || !fairyWindow || fairyWindow.isDestroyed()) {
@@ -564,7 +573,18 @@ function beginFairyDrag(event, payload) {
       return;
     }
     const cursor = screen.getCursorScreenPoint();
+
+    // 抖动抑制：鼠标增量小于 1 像素时不移动窗口，避免 getCursorScreenPoint 微小波动导致抖动
+    if (fairyDragLastCursor) {
+      const deltaX = cursor.x - fairyDragLastCursor.x;
+      const deltaY = cursor.y - fairyDragLastCursor.y;
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
+        return;
+      }
+    }
+
     updateFairyDragPosition(cursor.x, cursor.y);
+    fairyDragLastCursor = { x: cursor.x, y: cursor.y };
   }, 16);
 }
 

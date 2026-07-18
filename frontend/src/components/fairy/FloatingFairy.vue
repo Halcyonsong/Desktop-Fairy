@@ -387,21 +387,25 @@ async function handleSend() {
       return;
     }
 
+    // 临时闲聊模式下允许发送空消息，触发后端兜底自动回复
     fairyChatStore.setDraft(question);
     try {
       await fairyChatStore.sendTemporaryMessage(
         question,
         chatModeActive.value ? fairyChatStore.triggerSource || 'manual' : 'manual',
       );
-      localDraft.value = '';
-      fairyChatStore.setDraft('');
       syncBubbleWithTemporaryChat();
     } catch {
       // 错误由 store 状态和气泡承接
+    } finally {
+      // 无论成功或失败，都清空输入框，避免 sending 恢复后输入框还残留旧内容
+      localDraft.value = '';
+      fairyChatStore.setDraft('');
     }
     return;
   }
 
+  // 普通会话模式下，空消息不发送
   if (!question || workbenchStore.sending) {
     return;
   }

@@ -19,12 +19,25 @@ const fairyChatStore = useFairyChatStore();
 
 const temporarySummary = computed(() => fairyChatStore.temporarySessionSummary);
 const sidebarSessions = computed(() => {
+  const sessions = workbench.sessions.map((session) => ({
+    ...session,
+    summary: '',
+    temporary: false,
+  }));
+
   if (!temporarySummary.value) {
-    return workbench.sessions.map((session) => ({
-      ...session,
-      summary: '',
-      temporary: false,
-    }));
+    // 没有活跃的临时会话时，也显示一个临时闲聊入口，确保用户随时可进入
+    return [
+      {
+        sessionId: fairyChatStore.temporaryChatOption.sessionId,
+        title: fairyChatStore.temporaryChatOption.title,
+        createTime: new Date().toISOString(),
+        updateTime: new Date().toISOString(),
+        summary: '',
+        temporary: true,
+      },
+      ...sessions,
+    ];
   }
 
   return [
@@ -33,11 +46,7 @@ const sidebarSessions = computed(() => {
       summary: '',
       temporary: true,
     },
-    ...workbench.sessions.map((session) => ({
-      ...session,
-      summary: '',
-      temporary: false,
-    })),
+    ...sessions,
   ];
 });
 
@@ -84,11 +93,24 @@ function handleRefreshTemporarySession() {
 
 async function handleComposerSend(question: string) {
   if (fairyChatStore.selected) {
-    await fairyChatStore.sendTemporaryMessage(question, 'manual');
+    // 发送前立即清空输入框，让用户可以立即输入下一条消息
+    fairyChatStore.setDraft('');
+    try {
+      await fairyChatStore.sendTemporaryMessage(question, 'manual');
+    } catch (error) {
+      // 非 AbortError 的错误已在 store 中设置 errorMessage，此处仅防止未捕获异常
+      if (!(error instanceof Error && error.name === 'AbortError')) {
+        console.error('[WorkbenchView] 临时闲聊发送失败:', error);
+      }
+    }
     return;
   }
 
-  await workbench.sendMessage(question);
+  try {
+    await workbench.sendMessage(question);
+  } catch (error) {
+    console.error('[WorkbenchView] 工作台消息发送失败:', error);
+  }
 }
 
 function handleComposerStop() {
@@ -154,8 +176,8 @@ onMounted(() => {
               :session-key="activeSessionId"
               :messages="currentMessages"
               :error-message="currentErrorMessage"
-              :reasoning-text="workbench.latestReasoningText"
-              :reasoning-message-id="workbench.latestReasoningMessageId"
+              :reasoning-text="fairyChatStore.selected ? '' : workbench.latestReasoningText"
+              :reasoning-message-id="fairyChatStore.selected ? '' : workbench.latestReasoningMessageId"
               :history-pull-message="fairyChatStore.selected ? '' : workbench.historyPullMessage"
               :loading-more-history="fairyChatStore.selected ? false : workbench.loadingMoreHistory"
               :sending="currentSending"
@@ -173,6 +195,7 @@ onMounted(() => {
               :temperature-input="modelSourceStore.temperatureInput"
               :max-tokens-input="modelSourceStore.maxTokensInput"
               :auto-focus="shouldAutoFocusComposer"
+              :allow-empty-send="fairyChatStore.selected"
               @update:draft="fairyChatStore.selected ? fairyChatStore.setDraft($event) : workbench.setComposerDraft($event)"
               @send="handleComposerSend"
               @stop="handleComposerStop"

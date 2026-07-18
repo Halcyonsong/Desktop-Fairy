@@ -112,15 +112,16 @@ export function useFairyDragController({
         suppressClick.value = true;
 
         if (nativeDragEnabled) {
+          // 触发原生拖拽，主进程会启动光标轮询定时器接管后续窗口移动
           window.desktopFairy?.setFairyDragging?.(true);
           window.desktopFairy?.beginFairyDrag?.({
             screenX: startScreenX,
             screenY: startScreenY,
           });
-          window.desktopFairy?.updateFairyDrag?.({
-            screenX: moveEvent.screenX,
-            screenY: moveEvent.screenY,
-          });
+          // native drag 模式下，移除 pointermove 监听器，窗口移动完全由主进程轮询接管
+          // 避免窗口 setPosition 产生的额外 pointermove 事件干扰（buttons 异常、坐标不一致等）
+          window.removeEventListener('pointermove', handlePointerMove, true);
+          return;
         }
       }
 
@@ -129,14 +130,6 @@ export function useFairyDragController({
       }
 
       moveEvent.preventDefault();
-
-      if (nativeDragEnabled) {
-        window.desktopFairy?.updateFairyDrag?.({
-          screenX: moveEvent.screenX,
-          screenY: moveEvent.screenY,
-        });
-        return;
-      }
 
       const nextPosition = clampPosition(
         startPosition.x + deltaX,

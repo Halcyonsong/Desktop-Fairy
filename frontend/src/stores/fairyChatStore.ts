@@ -19,6 +19,7 @@ interface TemporaryChatSnapshot {
   messages: ChatMessage[];
   lastSessionActivityAt: number;
   draft: string;
+  version: number;
 }
 
 export type FairyChatTriggerSource = 'manual' | 'idle' | '';
@@ -47,6 +48,7 @@ function buildEmptySnapshot(): TemporaryChatSnapshot {
     messages: [],
     lastSessionActivityAt: 0,
     draft: '',
+    version: 0,
   };
 }
 
@@ -73,6 +75,7 @@ function loadSnapshot(): TemporaryChatSnapshot {
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],
       lastSessionActivityAt,
       draft: typeof parsed.draft === 'string' ? parsed.draft : '',
+      version: typeof parsed.version === 'number' ? parsed.version : 0,
     };
   } catch {
     return buildEmptySnapshot();
@@ -97,6 +100,8 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
   const idleArmed = ref(true);
   const selected = ref(false);
   const syncInitialized = ref(false);
+  const localVersion = ref(snapshot.version);
+  const syncSuppressed = ref(false);
 
   const canSend = computed(() => Boolean(modelSourceStore.selectedChatModelConfig) && !sending.value);
   const latestAssistantMessage = computed(
@@ -132,6 +137,7 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     messages.value = next.messages;
     lastSessionActivityAt.value = next.lastSessionActivityAt;
     draft.value = next.draft;
+    localVersion.value = next.version;
   }
 
   function persist() {
@@ -144,18 +150,34 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
       return;
     }
 
+    // 每次写入时递增版本号，确保多窗口同步时不会用旧数据覆盖新数据
+    localVersion.value += 1;
+
     const payload: TemporaryChatSnapshot = {
       temporarySessionId: temporarySessionId.value,
       messages: messages.value,
       lastSessionActivityAt: lastSessionActivityAt.value,
       draft: draft.value,
+      version: localVersion.value,
     };
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }
 
   function syncFromStorage() {
-    applySnapshot(loadSnapshot());
+    // 发送期间禁止同步，避免覆盖正在写入的状态
+    if (syncSuppressed.value || sending.value) {
+      return;
+    }
+
+    const next = loadSnapshot();
+
+    // 只同步版本号更新的数据，防止旧数据覆盖新数据
+    if (next.version <= localVersion.value) {
+      return;
+    }
+
+    applySnapshot(next);
   }
 
   function initializeSync() {
@@ -296,14 +318,17 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     if (index < 0) {
       return;
     }
-    // 创建副本并应用变更，再替换数组元素，确保 Vue 响应式系统检测到变化
+    // 创建副本并应用变更，通过替换整个数组确保 Vue 响应式系统检测到变化
     const current = messages.value[index];
     const next: ChatMessage = {
       ...current,
       timing: current.timing ? { ...current.timing } : {},
     };
     mutator(next);
-    messages.value[index] = next;
+    // 使用数组副本替换，确保 computed 和 watch 能正确检测到变化
+    const nextMessages = [...messages.value];
+    nextMessages[index] = next;
+    messages.value = nextMessages;
   }
 
   async function sendTemporaryMessage(question: string, source: FairyChatTriggerSource = 'manual') {
@@ -313,6 +338,9 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     if (!model) {
       throw new Error('请先选择聊天模型后再使用闲聊模式。');
     }
+
+    // 发送期间抑制 localStorage 同步，避免多窗口竞态导致消息丢失
+    syncSuppressed.value = true;
 
     activateTemporaryChat(source);
     markUserActivity();
@@ -325,16 +353,19 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     streamController.value = controller;
 
     appendUserMessage(normalizedQuestion);
-    const assistantMessage = createAssistantStreamingMessage();
+    const assistantMessageId = createAssistantStreamingMessage();
 
     try {
-      await fairyChatApi.sendTemporaryChat({
+      const replyContent = await fairyChatApi.sendTemporaryChat({
         sessionId,
         question: normalizedQuestion,
         model,
         signal: controller.signal,
         onEvent: (event) => {
-          handleStreamEvent(event, assistantMessage, sessionId, () => {}, () => {}, {});
+          // 通过索引替换更新消息，确保 Vue 响应式系统检测到变化
+          updateAssistantMessageById(assistantMessageId, (message) => {
+            handleStreamEvent(event, message, sessionId, () => {}, () => {}, {});
+          });
           if (event.eventType === CHAT_EVENT.data) {
             touchSessionActivity();
             persist();
@@ -346,33 +377,46 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
         },
       });
 
-      if (!assistantMessage.content.trim()) {
-        assistantMessage.content = '闲聊接口已返回，但内容为空。';
-      }
-      if (assistantMessage.status === 'sending') {
-        assistantMessage.status = 'completed';
-      }
+      // 请求完成后，使用 API 返回值直接设置消息内容（兜底，确保响应式更新）
+      updateAssistantMessageById(assistantMessageId, (message) => {
+        if (replyContent && replyContent.trim()) {
+          message.content = replyContent;
+        }
+        if (!message.content.trim()) {
+          message.content = '闲聊接口已返回，但内容为空。';
+        }
+        if (message.status === 'sending' || message.status === 'streaming') {
+          message.status = 'completed';
+        }
+      });
       touchSessionActivity();
       persist();
     } catch (error) {
       // 用户主动停止不应显示为错误
       if (error instanceof Error && error.name === 'AbortError') {
-        assistantMessage.status = 'interrupted';
-        if (!assistantMessage.content.trim()) {
-          assistantMessage.content = '已停止生成。';
-        }
+        updateAssistantMessageById(assistantMessageId, (message) => {
+          message.status = 'interrupted';
+          if (!message.content.trim()) {
+            message.content = '已停止生成。';
+          }
+        });
         persist();
         return;
       }
       const message = error instanceof Error ? error.message : '闲聊模式请求失败';
       errorMessage.value = message;
-      assistantMessage.status = 'error';
-      assistantMessage.content = assistantMessage.content.trim() ? assistantMessage.content : message;
+      updateAssistantMessageById(assistantMessageId, (msg) => {
+        msg.status = 'error';
+        msg.content = msg.content.trim() ? msg.content : message;
+      });
       persist();
       throw error;
     } finally {
       sending.value = false;
       streamController.value = null;
+      // 发送完成后，确保版本号已同步到 localStorage，再解除同步抑制
+      persist();
+      syncSuppressed.value = false;
     }
   }
 

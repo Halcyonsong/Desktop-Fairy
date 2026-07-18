@@ -17,6 +17,7 @@ const props = defineProps<{
   temperatureInput: string;
   maxTokensInput: string;
   autoFocus: boolean;
+  allowEmptySend?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -37,7 +38,11 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 function submit() {
   const value = props.draft.trim();
-  if (!value || props.sending || props.modelRequired) {
+  // 临时闲聊模式下允许发送空消息，触发后端兜底自动回复
+  if (props.sending || props.modelRequired) {
+    return;
+  }
+  if (!value && !props.allowEmptySend) {
     return;
   }
 
@@ -160,7 +165,7 @@ watch(
           <button v-if="sending" class="send-button" type="button" :title="uiText.composer.stop" @click="emit('stop')">
             <Square :size="19" />
           </button>
-          <button v-else class="send-button" type="button" :title="uiText.composer.send" :disabled="!draft.trim() || modelRequired" @click="submit">
+          <button v-else class="send-button" type="button" :title="uiText.composer.send" :disabled="(!allowEmptySend && !draft.trim()) || modelRequired" @click="submit">
             <SendHorizontal :size="19" />
           </button>
         </div>
