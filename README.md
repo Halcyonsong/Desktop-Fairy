@@ -2,6 +2,15 @@
 
 Desktop Fairy 是一个面向桌面场景的 AI 助手项目，当前采用“Java 后端 + Vue 前端 + Electron 桌面壳”的结构。
 
+当前版本：`0.1.1`
+
+## 0.1.1 变更说明
+
+- 修复临时闲聊在多窗口环境下消息丢失的问题（通过 localStorage 版本号机制避免竞态覆盖）
+- 重构桌面精灵拖动逻辑，采用 Windows 原生 API（`GetCursorPos` + `MoveWindow`）替代 Electron 轮询，解决高 DPI 缩放下方向性受限、抖动、无法往左上拖动等问题
+- 引入 `koffi` 作为 native binding，在 Electron 主进程中调用 `user32.dll`
+- 保留 Electron 轮询方案作为 fallback，非 Windows 平台或 koffi 加载失败时自动降级
+
 目前项目已经完成以下关键能力：
 
 - 多会话聊天
@@ -49,6 +58,7 @@ Desktop-Fairy
 - Pinia
 - Electron
 - electron-builder
+- koffi（用于在 Electron 主进程中调用 Windows native API）
 
 ## 当前整体架构
 
@@ -184,7 +194,7 @@ npm run desktop:dev
 
 - Node.js 可用
 - Maven 可用
-- Electron 依赖已正确安装
+- Electron 依赖已正确安装（包含 koffi native 模块，首次 `npm install` 后自动拉取）
 - `runtime/jre/bin/java.exe` 已存在
 
 ### 打包步骤
@@ -207,19 +217,19 @@ npm run desktop:pack
 
 主要产物位于：
 
-- `frontend/release/Desktop Fairy Setup 0.1.0.exe`
+- `frontend/release/Desktop Fairy Setup 0.1.1.exe`
 - `frontend/release/win-unpacked/`
 
 含义：
 
-- `Desktop Fairy Setup 0.1.0.exe`：Windows 安装包，适合分发给测试用户
+- `Desktop Fairy Setup 0.1.1.exe`：Windows 安装包，适合分发给测试用户
 - `win-unpacked/`：免安装目录版，适合自测和排查问题
 
 ## 分发建议
 
 当前推荐这样分发：
 
-- 面向普通测试用户：发送安装包 `Desktop Fairy Setup 0.1.0.exe`
+- 面向普通测试用户：发送安装包 `Desktop Fairy Setup 0.1.1.exe`
 - 面向技术同学排查问题：同时提供 `win-unpacked` 目录压缩包
 
 建议附带一段简短说明：

@@ -2,189 +2,151 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { chatApi } from '@/api/chatApi';
 import type {
-  LocalModelInstallStatus,
-  LocalModelScriptResult,
-  ModelSourceDetail,
-  ModelSourceListItem,
-  ModelSourceSavePayload,
+  LocalModelActionType,
+  LocalModelTaskDetail,
+  LocalModelTaskLaunchResult,
+  LocalModelTaskStatus,
 } from '@/types/chat';
-import { useModelSourceStore } from '@/stores/modelSourceStore';
 
-function getLastNonEmptyLine(text: string) {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .pop() ?? '';
-}
-
-function normalizeBaseUrl(baseUrl: string) {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
-
-function normalizeModelNames(payload: ModelSourceSavePayload) {
-  return payload.models.map((item) => item.modelName.trim()).filter(Boolean).sort();
-}
-
-function isSameLocalModelSource(detail: ModelSourceDetail, payload: ModelSourceSavePayload) {
-  if (detail.provider !== payload.provider) {
-    return false;
-  }
-
-  if (normalizeBaseUrl(detail.baseUrl) !== normalizeBaseUrl(payload.baseUrl)) {
-    return false;
-  }
-
-  const detailModels = detail.models.map((item) => item.modelName.trim()).filter(Boolean).sort();
-  const payloadModels = normalizeModelNames(payload);
-
-  if (detailModels.length !== payloadModels.length) {
-    return false;
-  }
-
-  return detailModels.every((modelName, index) => modelName === payloadModels[index]);
-}
-
-async function findExistingLocalModelSource(payload: ModelSourceSavePayload) {
-  const candidates = await chatApi.listModelSources({ provider: payload.provider });
-  if (!candidates.length) {
-    return null;
-  }
-
-  const details = await Promise.all(
-    candidates.map(async (source: ModelSourceListItem) => {
-      try {
-        return await chatApi.getModelSource(source.sourceCode);
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  const existing = details.filter((detail): detail is ModelSourceDetail => detail !== null).find((detail) => isSameLocalModelSource(detail, payload));
-  return existing ?? null;
-}
-
-async function upsertLocalModelSource(payload: ModelSourceSavePayload) {
-  const existing = await findExistingLocalModelSource(payload);
-
-  if (existing) {
-    await chatApi.updateModelSource({
-      sourceCode: existing.sourceCode,
-      name: payload.name,
-      provider: payload.provider,
-      baseUrl: payload.baseUrl,
-      apiKey: payload.apiKey,
-      models: payload.models,
-    });
-    return existing.sourceCode;
-  }
-
-  return chatApi.createModelSource(payload);
-}
+const TERMINAL_STATUSES: LocalModelTaskStatus[] = ['SUCCESS', 'FAILED'];
+const POLL_INTERVAL_MS = 1000;
 
 export const useLocalModelInstallerStore = defineStore('localModelInstaller', () => {
-  const status = ref<LocalModelInstallStatus>('idle');
-  const lastResult = ref<LocalModelScriptResult | null>(null);
+  const status = ref<LocalModelTaskStatus>('IDLE');
+  const actionType = ref<LocalModelActionType | null>(null);
+  const taskLaunch = ref<LocalModelTaskLaunchResult | null>(null);
+  const taskDetail = ref<LocalModelTaskDetail | null>(null);
   const errorMessage = ref('');
+  const polling = ref(false);
   const busy = ref(false);
+  const installBusy = ref(false);
+  const startBusy = ref(false);
+  const stopBusy = ref(false);
+  const logPanelOpen = ref(false);
+  let pollTimer: number | null = null;
 
-  async function installLocalTestModel() {
-    const modelSourceStore = useModelSourceStore();
-    busy.value = true;
-    status.value = 'installing';
-    errorMessage.value = '';
+  function clearPollTimer() {
+    if (pollTimer !== null) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function stopPolling() {
+    clearPollTimer();
+    polling.value = false;
+    busy.value = false;
+    installBusy.value = false;
+    startBusy.value = false;
+    stopBusy.value = false;
+  }
+
+  function scheduleNextPoll() {
+    clearPollTimer();
+    pollTimer = window.setTimeout(() => {
+      void pollTask();
+    }, POLL_INTERVAL_MS);
+  }
+
+  async function pollTask() {
+    const currentTaskId = taskLaunch.value?.taskId;
+    if (!currentTaskId) {
+      stopPolling();
+      return;
+    }
 
     try {
-      const result = await chatApi.installLocalTestModel();
-      lastResult.value = result;
+      const detail = await chatApi.getLocalTestTask(currentTaskId);
+      taskDetail.value = detail;
+      status.value = detail.status;
+      errorMessage.value = detail.status === 'FAILED' ? detail.message?.trim() || detail.stderr?.trim() || '本地脚本任务失败' : '';
 
-      if (result.exitCode !== 0) {
-        status.value = 'failed';
-        errorMessage.value = result.stderr?.trim() || result.stdout?.trim() || '本地测试模型安装失败';
-        return false;
+      if (TERMINAL_STATUSES.includes(detail.status)) {
+        stopPolling();
+        return;
       }
 
-      const jsonLine = getLastNonEmptyLine(result.stdout);
-      if (!jsonLine) {
-        status.value = 'failed';
-        errorMessage.value = '安装脚本未输出模型源配置 JSON';
-        return false;
-      }
+      scheduleNextPoll();
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '查询本地脚本任务失败';
+      stopPolling();
+    }
+  }
 
-      let payload: ModelSourceSavePayload;
-      try {
-        payload = JSON.parse(jsonLine) as ModelSourceSavePayload;
-      } catch {
-        status.value = 'failed';
-        errorMessage.value = `无法解析安装脚本输出的 JSON: ${jsonLine}`;
-        return false;
-      }
+  async function launchTask(action: LocalModelActionType) {
+    if (busy.value || polling.value) {
+      errorMessage.value = '当前已有本地脚本任务正在执行，请等待完成后再试';
+      return false;
+    }
 
-      await upsertLocalModelSource(payload);
-      await modelSourceStore.refreshSourceCatalog();
-      status.value = 'success';
+    stopPolling();
+    errorMessage.value = '';
+    actionType.value = action;
+    logPanelOpen.value = true;
+    taskDetail.value = null;
+    busy.value = true;
+
+    if (action === 'install') installBusy.value = true;
+    if (action === 'start') startBusy.value = true;
+    if (action === 'stop') stopBusy.value = true;
+
+    try {
+      const launchResult =
+        action === 'install'
+          ? await chatApi.installLocalTestModel()
+          : action === 'start'
+            ? await chatApi.startLocalTestModel()
+            : await chatApi.stopLocalTestModel();
+
+      taskLaunch.value = launchResult;
+      status.value = launchResult.status;
+      polling.value = true;
+      await pollTask();
       return true;
     } catch (error) {
-      status.value = 'failed';
-      errorMessage.value = error instanceof Error ? error.message : '本地测试模型安装失败';
+      errorMessage.value = error instanceof Error ? error.message : '本地脚本任务启动失败';
+      stopPolling();
       return false;
-    } finally {
-      busy.value = false;
     }
+  }
+
+  function openLogPanel() {
+    logPanelOpen.value = true;
+  }
+
+  function closeLogPanel() {
+    logPanelOpen.value = false;
+  }
+
+  async function installLocalTestModel() {
+    return launchTask('install');
   }
 
   async function startLocalTestModel() {
-    busy.value = true;
-    errorMessage.value = '';
-    try {
-      const result = await chatApi.startLocalTestModel();
-      lastResult.value = result;
-      if (result.exitCode !== 0) {
-        status.value = 'failed';
-        errorMessage.value = result.stderr?.trim() || result.stdout?.trim() || '本地测试模型启动失败';
-        return false;
-      }
-      status.value = 'running';
-      return true;
-    } catch (error) {
-      status.value = 'failed';
-      errorMessage.value = error instanceof Error ? error.message : '本地测试模型启动失败';
-      return false;
-    } finally {
-      busy.value = false;
-    }
+    return launchTask('start');
   }
 
   async function stopLocalTestModel() {
-    busy.value = true;
-    errorMessage.value = '';
-    try {
-      const result = await chatApi.stopLocalTestModel();
-      lastResult.value = result;
-      if (result.exitCode !== 0) {
-        status.value = 'failed';
-        errorMessage.value = result.stderr?.trim() || result.stdout?.trim() || '本地测试模型停止失败';
-        return false;
-      }
-      status.value = 'stopped';
-      return true;
-    } catch (error) {
-      status.value = 'failed';
-      errorMessage.value = error instanceof Error ? error.message : '本地测试模型停止失败';
-      return false;
-    } finally {
-      busy.value = false;
-    }
+    return launchTask('stop');
   }
 
   return {
     status,
-    lastResult,
+    actionType,
+    taskLaunch,
+    taskDetail,
     errorMessage,
+    polling,
     busy,
+    installBusy,
+    startBusy,
+    stopBusy,
+    logPanelOpen,
+    openLogPanel,
+    closeLogPanel,
     installLocalTestModel,
     startLocalTestModel,
     stopLocalTestModel,
+    stopPolling,
   };
 });

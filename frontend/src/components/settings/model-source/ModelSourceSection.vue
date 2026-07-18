@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ChevronLeft, Download, FileText, Play, Plus, SquareTerminal } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { ChevronLeft, Download, FileText, Play, Plus, RefreshCw, SquareTerminal } from '@lucide/vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { customText } from '@/config/customText';
 import DraftModelsSection from '@/components/settings/model-source/DraftModelsSection.vue';
 import SavedModelsSection from '@/components/settings/model-source/SavedModelsSection.vue';
@@ -13,7 +13,6 @@ import type { ModelProvider } from '@/types/chat';
 const modelSourceStore = useModelSourceStore();
 const localModelInstallerStore = useLocalModelInstallerStore();
 const isDetailMode = ref(false);
-const showScriptLog = ref(false);
 const showInstallConfirm = ref(false);
 
 const providerOptions: ModelProvider[] = [
@@ -53,19 +52,18 @@ const pageTitle = computed(() =>
 const pageStatus = computed(() =>
   isDetailMode.value ? customText.modelSource.detailStatus : customText.modelSource.listStatus,
 );
-const installMessage = computed(() =>
-  localModelInstallerStore.errorMessage ||
-  (localModelInstallerStore.status === 'success'
-    ? customText.modelSource.localInstallSuccess
-    : localModelInstallerStore.status === 'running'
-      ? customText.modelSource.localRunning
-      : localModelInstallerStore.status === 'stopped'
-        ? customText.modelSource.localStopped
-        : customText.modelSource.localErrorFallback),
+const logButtonTitle = computed(() =>
+  localModelInstallerStore.logPanelOpen ? customText.modelSource.localHideLogTitle : customText.modelSource.localViewLogTitle,
 );
-const scriptLogTitle = computed(() =>
-  showScriptLog.value ? customText.modelSource.localHideLogTitle : customText.modelSource.localViewLogTitle,
-);
+const localTaskBusy = computed(() => localModelInstallerStore.busy || localModelInstallerStore.polling);
+const taskStatusText = computed(() => localModelInstallerStore.taskDetail?.status || localModelInstallerStore.taskLaunch?.status || 'IDLE');
+const taskMessage = computed(() => localModelInstallerStore.taskDetail?.message || localModelInstallerStore.errorMessage || '当前无脚本任务');
+const taskStdout = computed(() => localModelInstallerStore.taskDetail?.stdout || '');
+const taskStderr = computed(() => localModelInstallerStore.taskDetail?.stderr || '');
+const taskScript = computed(() => localModelInstallerStore.taskDetail?.script || localModelInstallerStore.taskLaunch?.script || '-');
+const taskExitCode = computed(() => localModelInstallerStore.taskDetail?.exitCode ?? '-');
+const taskStartedAt = computed(() => localModelInstallerStore.taskDetail?.startedAt || '-');
+const taskFinishedAt = computed(() => localModelInstallerStore.taskDetail?.finishedAt || '-');
 
 async function save() {
   await modelSourceStore.saveCurrentForm();
@@ -73,6 +71,10 @@ async function save() {
 
 async function testModel(localId: string) {
   await modelSourceStore.testModelDraft(localId);
+}
+
+async function fetchModels() {
+  await modelSourceStore.fetchModelsFromProvider();
 }
 
 function getModelTestState(localId: string): 'idle' | 'testing' | 'success' | 'error' {
@@ -99,7 +101,6 @@ function getModelTestTitle(localId: string) {
 
 function startCreate() {
   isDetailMode.value = true;
-  showScriptLog.value = false;
   modelSourceStore.activeSourceCode = '';
   modelSourceStore.activeSourceDetail = null;
   modelSourceStore.resetForm();
@@ -107,7 +108,6 @@ function startCreate() {
 
 async function openSourceDetail(sourceCode: string) {
   isDetailMode.value = true;
-  showScriptLog.value = false;
   await modelSourceStore.fetchSourceDetail(sourceCode);
 }
 
@@ -128,23 +128,36 @@ function cancelInstallLocalTestModel() {
 
 async function confirmInstallLocalTestModel() {
   showInstallConfirm.value = false;
-  const success = await localModelInstallerStore.installLocalTestModel();
-  showScriptLog.value = !success;
+  await localModelInstallerStore.installLocalTestModel();
 }
 
 async function startLocalTestModel() {
-  const success = await localModelInstallerStore.startLocalTestModel();
-  showScriptLog.value = !success;
+  await localModelInstallerStore.startLocalTestModel();
 }
 
 async function stopLocalTestModel() {
-  const success = await localModelInstallerStore.stopLocalTestModel();
-  showScriptLog.value = !success;
+  await localModelInstallerStore.stopLocalTestModel();
 }
 
-function toggleScriptLog() {
-  showScriptLog.value = !showScriptLog.value;
+async function refreshModelSources() {
+  await modelSourceStore.refreshSourceCatalog();
 }
+
+function toggleLogPanel() {
+  if (localModelInstallerStore.logPanelOpen) {
+    localModelInstallerStore.closeLogPanel();
+    return;
+  }
+  localModelInstallerStore.openLogPanel();
+}
+
+function closeSuccessModal() {
+  modelSourceStore.clearSuccessMessage();
+}
+
+onBeforeUnmount(() => {
+  localModelInstallerStore.stopPolling();
+});
 </script>
 
 <template>
@@ -152,21 +165,43 @@ function toggleScriptLog() {
     <div v-if="showInstallConfirm" class="settings-modal-overlay" @click.self="cancelInstallLocalTestModel">
       <div class="settings-modal-card">
         <div class="settings-modal-card__header">
-          <span class="chat-header__status">本地测试模型安装确认</span>
-          <h2>安装 Qwen3.5-4B-UD-IQ2_XXS</h2>
+          <span class="chat-header__status">{{ customText.modelSource.localInstallConfirmStatus }}</span>
+          <h2>{{ customText.modelSource.localInstallConfirmTitle }}</h2>
         </div>
 
         <div class="settings-modal-card__content">
-          <p>将尝试安装并启动本地测试模型 <code>Qwen3.5-4B-UD-IQ2_XXS</code>，并自动写入本地供应商配置。</p>
-          <p>安装过程中会检查或补充 Python、huggingface_hub、llama.cpp / llama-server 等运行依赖，并下载模型文件到本地目录。</p>
-          <p>如果你已经自行下载并启动了本地模型，也可以直接按 OpenAI 兼容模式手动新增供应商配置；<code>baseUrl</code> 填本地服务地址，<code>apiKey</code> 可以留空，但建议统一填写 <code>local</code>。</p>
-          <p>首次下载和启动受网络与磁盘速度影响较大，通常需要 10 到 30 分钟不等。安装期间请不要重复点击安装按钮。</p>
+          <p>{{ customText.modelSource.localInstallConfirmDescription }}</p>
+          <p>{{ customText.modelSource.localInstallConfirmPythonNotice }}</p>
+          <p>{{ customText.modelSource.localInstallConfirmDependencyNotice }}</p>
+          <p>{{ customText.modelSource.localInstallConfirmManualHint }}</p>
+          <p>{{ customText.modelSource.localInstallConfirmDurationHint }}</p>
         </div>
 
         <div class="settings-modal-card__actions">
-          <button class="settings-panel__button" type="button" @click="cancelInstallLocalTestModel">取消</button>
+          <button class="settings-panel__button" type="button" @click="cancelInstallLocalTestModel">
+            {{ customText.modelSource.localInstallConfirmCancel }}
+          </button>
           <button class="settings-panel__button settings-panel__button--primary" type="button" @click="confirmInstallLocalTestModel">
-            确定安装
+            {{ customText.modelSource.localInstallConfirmSubmit }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="modelSourceStore.successMessage" class="settings-modal-overlay" @click.self="closeSuccessModal">
+      <div class="settings-modal-card settings-modal-card--success">
+        <div class="settings-modal-card__header">
+          <span class="chat-header__status">操作完成</span>
+          <h2>已成功处理</h2>
+        </div>
+
+        <div class="settings-modal-card__content">
+          <p>{{ modelSourceStore.successMessage }}</p>
+        </div>
+
+        <div class="settings-modal-card__actions">
+          <button class="settings-panel__button settings-panel__button--primary" type="button" @click="closeSuccessModal">
+            确定
           </button>
         </div>
       </div>
@@ -184,7 +219,7 @@ function toggleScriptLog() {
             class="settings-icon-button"
             type="button"
             :title="customText.modelSource.localStartTitle"
-            :disabled="localModelInstallerStore.busy"
+            :disabled="localTaskBusy"
             @click="startLocalTestModel"
           >
             <Play :size="16" />
@@ -194,7 +229,7 @@ function toggleScriptLog() {
             class="settings-icon-button"
             type="button"
             :title="customText.modelSource.localStopTitle"
-            :disabled="localModelInstallerStore.busy"
+            :disabled="localTaskBusy"
             @click="stopLocalTestModel"
           >
             <SquareTerminal :size="16" />
@@ -204,19 +239,23 @@ function toggleScriptLog() {
             class="settings-icon-button"
             type="button"
             :title="customText.modelSource.localInstallTitle"
-            :disabled="localModelInstallerStore.busy"
+            :disabled="localTaskBusy"
             @click="promptInstallLocalTestModel"
           >
             <Download :size="16" />
           </button>
 
           <button
-            v-if="localModelInstallerStore.lastResult"
             class="settings-icon-button"
             type="button"
-            :title="scriptLogTitle"
-            @click="toggleScriptLog"
+            title="刷新供应商配置"
+            :disabled="modelSourceStore.loadingCatalog"
+            @click="refreshModelSources"
           >
+            <RefreshCw :size="16" />
+          </button>
+
+          <button class="settings-icon-button" type="button" :title="logButtonTitle" @click="toggleLogPanel">
             <FileText :size="16" />
           </button>
         </template>
@@ -243,23 +282,29 @@ function toggleScriptLog() {
       </div>
     </header>
 
-    <div v-if="!isDetailMode && (localModelInstallerStore.errorMessage || localModelInstallerStore.lastResult)" class="settings-script-feedback">
-      <div class="message-alert">{{ installMessage }}</div>
-
-      <div v-if="showScriptLog && localModelInstallerStore.lastResult" class="settings-script-log">
+    <div v-if="!isDetailMode && localModelInstallerStore.logPanelOpen" class="settings-script-feedback">
+      <div class="settings-script-log">
         <div class="settings-script-log__meta">
-          <span>{{ customText.modelSource.localScriptLabel }}：{{ localModelInstallerStore.lastResult.script }}</span>
-          <span>{{ customText.modelSource.localExitCodeLabel }}：{{ localModelInstallerStore.lastResult.exitCode }}</span>
+          <span>状态：{{ taskStatusText }}</span>
+          <span>脚本：{{ taskScript }}</span>
+          <span>退出码：{{ taskExitCode }}</span>
+          <span>开始：{{ taskStartedAt }}</span>
+          <span>结束：{{ taskFinishedAt }}</span>
+        </div>
+
+        <div class="settings-script-log__block">
+          <span>当前消息</span>
+          <pre>{{ taskMessage }}</pre>
         </div>
 
         <div class="settings-script-log__block">
           <span>{{ customText.modelSource.localStdoutTitle }}</span>
-          <pre>{{ localModelInstallerStore.lastResult.stdout || '-' }}</pre>
+          <pre>{{ taskStdout || '当前无脚本任务' }}</pre>
         </div>
 
-        <div v-if="localModelInstallerStore.lastResult.stderr" class="settings-script-log__block">
+        <div v-if="taskStderr" class="settings-script-log__block">
           <span>{{ customText.modelSource.localStderrTitle }}</span>
-          <pre>{{ localModelInstallerStore.lastResult.stderr }}</pre>
+          <pre>{{ taskStderr }}</pre>
         </div>
       </div>
     </div>
@@ -283,13 +328,16 @@ function toggleScriptLog() {
 
       <DraftModelsSection
         :models="modelSourceStore.form.models"
+        :fetching-models="modelSourceStore.fetchingModels"
         :testing-model-local-id="modelSourceStore.testingModelLocalId"
         :get-model-test-state="getModelTestState"
         :get-model-test-title="getModelTestTitle"
+        @fetch-models="fetchModels"
         @add-model="modelSourceStore.addModelRow"
         @update-model="modelSourceStore.updateModelRow"
         @test-model="testModel"
         @remove-model="modelSourceStore.removeModelRow"
+        @clear-models="modelSourceStore.clearDraftModels"
       />
 
       <SavedModelsSection

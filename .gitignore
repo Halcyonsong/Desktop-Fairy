@@ -42,12 +42,14 @@ HELP.md
 /frontend/.vite/
 /frontend/release/
 /frontend/bundle-resources/
+/frontend/bundle-staging/
 /frontend/*.tsbuildinfo
 
 # Local temp/cache
 /.codex-npm-cache/
 /.codex-tmp/
 /.agents/
+/.uploads/
 /temp/
 
 # Local runtime data

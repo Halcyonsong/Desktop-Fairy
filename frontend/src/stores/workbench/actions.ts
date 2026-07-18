@@ -1,5 +1,6 @@
 import { chatApi } from '@/api/chatApi';
 import { uiText } from '@/config/uiText';
+import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
 import {
   applyHistoryPage,
@@ -153,6 +154,7 @@ export async function sendWorkbenchMessage(
   }
 
   const modelSourceStore = useModelSourceStore();
+  const chatPreferencesStore = useChatPreferencesStore();
   if (!modelSourceStore.selectedChatModelConfig) {
     state.errorMessage.value = uiText.errors.modelRequired;
     return;
@@ -183,6 +185,7 @@ export async function sendWorkbenchMessage(
     await chatApi.sendChat({
       sessionId,
       question: trimmedQuestion,
+      systemPrompt: chatPreferencesStore.systemPrompt,
       model: modelSourceStore.selectedChatModelConfig,
       signal: abortController.signal,
       onEvent: (event) =>

@@ -1,0 +1,401 @@
+.floating-fairy-root {
+  position: fixed;
+  right: 24px;
+  bottom: 26px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.floating-fairy-root--native {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0;
+}
+
+.floating-fairy-shell {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-items: end;
+  pointer-events: auto;
+  user-select: none;
+  overflow: visible;
+}
+
+.floating-fairy-shell--dragging {
+  cursor: grabbing;
+}
+
+.floating-fairy-glow {
+  position: absolute;
+  inset: auto 50% 44px;
+  width: 156px;
+  height: 48px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(79 113 255 / 0.24) 0%, rgb(79 113 255 / 0.08) 46%, transparent 74%);
+  filter: blur(12px);
+  transform: translateX(-50%);
+}
+
+.floating-fairy-shadow {
+  position: absolute;
+  inset: auto 50% 40px;
+  width: 136px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgb(34 44 78 / 0.14);
+  filter: blur(10px);
+  transform: translateX(-50%);
+}
+
+.floating-fairy-avatar {
+  position: relative;
+  z-index: 6;
+  display: grid;
+  place-items: end center;
+  width: 100%;
+  height: auto;
+  min-height: 188px;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.floating-fairy-avatar:disabled {
+  opacity: 1;
+}
+
+.floating-fairy-sprite-shell,
+.floating-fairy-skeleton {
+  transform-origin: center bottom;
+}
+
+.floating-fairy-sprite-shell {
+  display: grid;
+  place-items: center;
+}
+
+.floating-fairy-sprite-wrapper {
+  transform-origin: center bottom;
+}
+
+.floating-fairy-sprite {
+  transform-origin: center bottom;
+}
+
+.floating-fairy-skeleton {
+  width: 132px;
+  height: 180px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgb(233 238 255 / 0.92), rgb(211 220 255 / 0.72));
+  box-shadow:
+    0 20px 44px rgb(76 103 178 / 0.18),
+    inset 0 0 0 1px rgb(76 103 178 / 0.12);
+}
+
+.floating-fairy-bubble {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  gap: 8px;
+  width: 248px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface-glass-strong);
+  color: var(--color-text);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
+}
+
+.floating-fairy-bubble::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background: inherit;
+  transform: translateY(-50%) rotate(-45deg);
+}
+
+.floating-fairy-bubble strong {
+  font-size: 13px;
+}
+
+.floating-fairy-bubble__body {
+  max-height: 180px;
+  overflow-y: auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.floating-fairy-bubble--error {
+  border-color: var(--color-danger-border);
+}
+
+.floating-fairy-bubble--error .floating-fairy-bubble__body {
+  color: var(--color-danger);
+}
+
+.floating-fairy-chat-shell {
+  width: 100%;
+  margin-top: 0;
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  overflow: visible;
+}
+
+.floating-fairy-inline-composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-glass-strong);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
+  overflow: visible;
+}
+
+.floating-fairy-session-trigger,
+.floating-fairy-inline-send {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.floating-fairy-session-trigger:hover,
+.floating-fairy-inline-send:hover {
+  background: var(--color-hover-soft);
+  color: var(--color-text);
+}
+
+.floating-fairy-inline-send {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.floating-fairy-inline-send--stop {
+  background: var(--color-danger);
+}
+
+.floating-fairy-inline-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.floating-fairy-inline-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  outline: none;
+  font-size: 12px;
+}
+
+.floating-fairy-inline-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.floating-fairy-session-picker-anchor {
+  position: relative;
+  z-index: 12;
+}
+
+.floating-fairy-session-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 16;
+  display: grid;
+  gap: 4px;
+  width: min(252px, calc(100vw - 24px));
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-glass-strong);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
+  transform: translateY(-4px);
+  transform-origin: left bottom;
+}
+
+.floating-fairy-session-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  font-size: 12px;
+}
+
+.floating-fairy-session-option__main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.floating-fairy-session-option__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floating-fairy-session-option__description {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.floating-fairy-session-option__icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.floating-fairy-session-refresh {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  opacity: 0.78;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.floating-fairy-session-refresh:hover {
+  background: rgb(255 255 255 / 0.12);
+  color: var(--color-text);
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+.floating-fairy-session-option:hover {
+  background: var(--color-hover-soft);
+}
+
+.floating-fairy-session-option--active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.floating-fairy-session-option--temporary {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
+}
+
+.floating-fairy-chat-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+  padding: 4px 6px 0;
+}
+
+.floating-fairy-chat-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-size: 11px;
+}
+
+.floating-fairy-chat-tip {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.floating-fairy-sending-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 4px 8px 0 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.floating-fairy-sending-indicator__icon {
+  animation: floating-fairy-spin 1s linear infinite;
+}
+
+.floating-fairy-fade-enter-active,
+.floating-fairy-fade-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.2s ease;
+}
+
+.floating-fairy-fade-enter-from,
+.floating-fairy-fade-leave-to {
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+}
+
+.floating-fairy-fade-enter-to,
+.floating-fairy-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@keyframes floating-fairy-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 900px) {
+  .floating-fairy-root {
+    right: 14px;
+    bottom: 18px;
+  }
+
+  .floating-fairy-bubble {
+    width: 220px;
+  }
+}

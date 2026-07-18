@@ -60,13 +60,33 @@ export function syncSourceDetailCache(state: ModelSourceStateRefs) {
 }
 
 export function loadFormFromDetail(state: ModelSourceStateRefs, formRefs: ModelSourceFormRefs, detail: ModelSourceDetail) {
-  formRefs.form.value = toModelSourceForm(detail);
+  const form = toModelSourceForm(detail);
+  formRefs.form.value = {
+    ...form,
+    models: createEmptyForm().models,
+  };
   state.testingModelLocalId.value = '';
   state.testResultByModelId.value = {};
 }
 
-export function normalizeModelSourcePayload(formRefs: ModelSourceFormRefs) {
-  return toModelSourceSavePayload(formRefs.form.value);
+export function normalizeModelSourcePayload(state: ModelSourceStateRefs, formRefs: ModelSourceFormRefs) {
+  const payload = toModelSourceSavePayload(formRefs.form.value);
+  const savedModels = state.activeSourceDetail.value?.models.map((item) => ({ modelName: item.modelName })) ?? [];
+  const mergedModelNames = new Set<string>();
+  const models = [...savedModels, ...payload.models].filter((item) => {
+    const normalizedName = item.modelName.trim();
+    if (!normalizedName || mergedModelNames.has(normalizedName)) {
+      return false;
+    }
+    mergedModelNames.add(normalizedName);
+    item.modelName = normalizedName;
+    return true;
+  });
+
+  return {
+    ...payload,
+    models,
+  };
 }
 
 export function ensureModelRow(formRefs: ModelSourceFormRefs) {
@@ -168,7 +188,7 @@ export async function refreshModelSourceCatalog(state: ModelSourceStateRefs, for
 }
 
 export async function saveModelSourceForm(state: ModelSourceStateRefs, formRefs: ModelSourceFormRefs) {
-  const payload = normalizeModelSourcePayload(formRefs);
+  const payload = normalizeModelSourcePayload(state, formRefs);
   state.saving.value = true;
   state.errorMessage.value = '';
   try {
@@ -198,7 +218,7 @@ export async function testDraftModel(state: ModelSourceStateRefs, formRefs: Mode
     throw new Error('请先填写模型名称后再测试连接');
   }
 
-  const payload = normalizeModelSourcePayload(formRefs);
+  const payload = normalizeModelSourcePayload(state, formRefs);
   state.testingModelLocalId.value = localId;
   state.errorMessage.value = '';
   state.testResultByModelId.value = {

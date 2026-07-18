@@ -1,4 +1,4 @@
-export type SettingsSectionKey = 'model-source' | 'chat-preferences' | 'appearance' | 'desktop-behavior';
+export type SettingsSectionKey = 'model-source' | 'chat-preferences' | 'appearance' | 'system-actions' | 'desktop-behavior';
 
 export interface SettingsSectionItem {
   key: SettingsSectionKey;

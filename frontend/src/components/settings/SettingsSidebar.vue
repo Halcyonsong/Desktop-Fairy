@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, MonitorCog, Palette, Settings, SlidersHorizontal } from '@lucide/vue';
+import { ArrowLeft, DatabaseZap, MonitorCog, Palette, RefreshCw, SlidersHorizontal } from '@lucide/vue';
 import { customText } from '@/config/customText';
 import type { SettingsSectionKey, SettingsSectionItem } from '@/types/settings';
 
@@ -16,11 +16,13 @@ const emit = defineEmits<{
 function resolveIcon(section: SettingsSectionKey) {
   switch (section) {
     case 'model-source':
-      return Settings;
+      return DatabaseZap;
     case 'chat-preferences':
       return SlidersHorizontal;
     case 'appearance':
       return Palette;
+    case 'system-actions':
+      return RefreshCw;
     case 'desktop-behavior':
       return MonitorCog;
   }

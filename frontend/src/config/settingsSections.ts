@@ -21,9 +21,15 @@ export const settingsSections: SettingsSectionItem[] = [
     enabled: true,
   },
   {
+    key: 'system-actions',
+    label: '系统性操作',
+    description: '存放重载等系统级操作入口',
+    enabled: true,
+  },
+  {
     key: 'desktop-behavior',
-    label: '桌面行为',
-    description: '预留桌面精灵行为配置',
-    enabled: false,
+    label: customText.desktopBehavior.title,
+    description: '配置桌面精灵显示与悬浮行为',
+    enabled: true,
   },
 ];

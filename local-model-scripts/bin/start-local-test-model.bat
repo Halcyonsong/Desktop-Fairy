@@ -11,7 +11,6 @@ set LOG_FILE_OUT=%LOG_DIR%\local-test-model.out.log
 set LOG_FILE_ERR=%LOG_DIR%\local-test-model.err.log
 set PID_FILE=%RUN_DIR%\local-test-model.pid
 set PORT=18080
-set MODEL_NAME=Qwen3.5-4B-UD-IQ2_XXS
 
 if not exist "%MODEL_FILE%" (
     echo Model file not found:
@@ -51,9 +50,9 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%PORT%" ^| findstr LISTENIN
 )
 
 if defined LISTEN_PID (
-    curl.exe -s http://127.0.0.1:%PORT%/v1/models | findstr /C:"%MODEL_NAME%" >nul 2>nul
+    curl.exe -s http://127.0.0.1:%PORT%/v1/models >nul 2>nul
     if errorlevel 1 (
-        echo Port %PORT% is occupied by another service, or target model is not available
+        echo Port %PORT% is occupied by another service, or target OpenAI-compatible service is unavailable
         exit /b 1
     )
     > "%PID_FILE%" echo %LISTEN_PID%
@@ -70,7 +69,7 @@ if errorlevel 1 (
 
 set READY=
 for /l %%i in (1,1,30) do (
-    curl.exe -s http://127.0.0.1:%PORT%/v1/models | findstr /C:"%MODEL_NAME%" >nul 2>nul
+    curl.exe -s http://127.0.0.1:%PORT%/v1/models >nul 2>nul
     if not errorlevel 1 (
         set READY=1
         goto :ready_ok

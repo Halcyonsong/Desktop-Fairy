@@ -1,4 +1,4 @@
-package io.github.halcyonsong.modelsource.pojo.vo;
+package io.github.halcyonsong.modelsource.pojo.vo.models;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -11,15 +11,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ModelSourceVO {
+public class ModelSourceModelVO {
 
-    private String sourceCode;
+    private Long id;
 
-    private String name;
-
-    private String provider;
-
-    private String baseUrl;
+    private String modelName;
 
     private LocalDateTime createTime;
 

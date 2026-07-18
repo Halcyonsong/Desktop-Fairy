@@ -1,12 +1,15 @@
 package io.github.halcyonsong.modelsource.service;
 
-import io.github.halcyonsong.modelsource.pojo.vo.LocalModelScriptResultVO;
+import io.github.halcyonsong.modelsource.pojo.vo.script.LocalModelScriptLaunchVO;
+import io.github.halcyonsong.modelsource.pojo.vo.script.LocalModelScriptTaskVO;
 
 public interface LocalModelScriptService {
 
-    LocalModelScriptResultVO installLocalTestModel();
+    LocalModelScriptLaunchVO installLocalTestModel();
 
-    LocalModelScriptResultVO startLocalTestModel();
+    LocalModelScriptLaunchVO startLocalTestModel();
 
-    LocalModelScriptResultVO stopLocalTestModel();
+    LocalModelScriptLaunchVO stopLocalTestModel();
+
+    LocalModelScriptTaskVO getTask(String taskId);
 }

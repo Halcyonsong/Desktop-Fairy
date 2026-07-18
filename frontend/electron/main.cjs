@@ -1,14 +1,29 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const {
+  FAIRY_WINDOW_WIDTH,
+  FAIRY_WINDOW_HEIGHT,
+  clampFairyPosition,
+  createFairyDragController,
+} = require('./fairyDragController.cjs');
 
 const BACKEND_HEALTH_URL = 'http://127.0.0.1:18765/api/health';
 const FRONTEND_DEV_URL = 'http://127.0.0.1:5173';
+const WORKBENCH_WINDOW_MODE = 'workbench';
+const FAIRY_WINDOW_MODE = 'fairy';
 
 let backendProcess = null;
 let mainWindow = null;
+let fairyWindow = null;
+let tray = null;
+let isQuitting = false;
+let fairyWindowEnabled = false;
+
+// 桌面精灵拖动控制器，在 createFairyWindow 后初始化
+let fairyDragController = null;
 
 function isDevMode() {
   return !app.isPackaged;
@@ -63,16 +78,151 @@ function resolveBackendJarPath(resourcesRoot) {
   return packagedJarPath;
 }
 
-function resolveFrontendEntry() {
+function resolveFrontendEntry(windowMode) {
   if (isDevMode()) {
-    return { type: 'url', value: FRONTEND_DEV_URL };
+    return { type: 'url', value: `${FRONTEND_DEV_URL}/?windowMode=${windowMode}` };
   }
 
   const distIndexPath = path.join(__dirname, '..', 'dist', 'index.html');
   if (!fs.existsSync(distIndexPath)) {
     throw new Error(`Packaged frontend dist entry not found: ${distIndexPath}`);
   }
-  return { type: 'file', value: distIndexPath };
+
+  return {
+    type: 'file',
+    value: distIndexPath,
+    query: { windowMode },
+  };
+}
+
+function createTrayImage() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+      <defs>
+        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#8db3ff"/>
+          <stop offset="100%" stop-color="#5b7cff"/>
+        </linearGradient>
+      </defs>
+      <circle cx="16" cy="16" r="14" fill="url(#g)"/>
+      <path d="M16 7.5l2.5 5.1 5.6.8-4 3.9.9 5.5-5-2.6-5 2.6.9-5.5-4-3.9 5.6-.8z" fill="#ffffff"/>
+    </svg>
+  `;
+
+  return nativeImage.createFromDataURL(`data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`);
+}
+
+function getFairyStateFilePath() {
+  return path.join(app.getPath('userData'), 'fairy-window-state.json');
+}
+
+function getFairyPreferencesFilePath() {
+  return path.join(app.getPath('userData'), 'fairy-preferences.json');
+}
+
+function ensureParentDir(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+function getDefaultFairyBounds() {
+  const display = screen.getPrimaryDisplay();
+  const workArea = display.workArea;
+
+  return {
+    width: FAIRY_WINDOW_WIDTH,
+    height: FAIRY_WINDOW_HEIGHT,
+    x: Math.round(workArea.x + workArea.width - FAIRY_WINDOW_WIDTH - 24),
+    y: Math.round(workArea.y + workArea.height - FAIRY_WINDOW_HEIGHT - 24),
+  };
+}
+
+function normalizeFairyBounds(candidate) {
+  const fallback = getDefaultFairyBounds();
+  if (!candidate || typeof candidate !== 'object') {
+    return fallback;
+  }
+
+  const x = Number(candidate.x);
+  const y = Number(candidate.y);
+  const nextPosition = clampFairyPosition(
+    Number.isFinite(x) ? x : fallback.x,
+    Number.isFinite(y) ? y : fallback.y,
+    FAIRY_WINDOW_WIDTH,
+    FAIRY_WINDOW_HEIGHT,
+  );
+
+  return {
+    width: FAIRY_WINDOW_WIDTH,
+    height: FAIRY_WINDOW_HEIGHT,
+    x: nextPosition.x,
+    y: nextPosition.y,
+  };
+}
+
+function readJsonFile(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return fallback;
+    }
+
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function readFairyBounds() {
+  return normalizeFairyBounds(readJsonFile(getFairyStateFilePath(), null));
+}
+
+function persistFairyBounds() {
+  if (!fairyWindow || fairyWindow.isDestroyed()) {
+    return;
+  }
+
+  try {
+    const statePath = getFairyStateFilePath();
+    const normalizedBounds = normalizeFairyBounds(fairyWindow.getBounds());
+    ensureParentDir(statePath);
+    fs.writeFileSync(statePath, JSON.stringify(normalizedBounds, null, 2), 'utf8');
+  } catch {
+    // ignore persistence failures
+  }
+}
+
+function readFairyPreferences() {
+  const raw = readJsonFile(getFairyPreferencesFilePath(), {});
+  return {
+    enabled: Boolean(raw && typeof raw === 'object' ? raw.enabled : false),
+  };
+}
+
+function persistFairyPreferences() {
+  try {
+    const preferencesPath = getFairyPreferencesFilePath();
+    ensureParentDir(preferencesPath);
+    fs.writeFileSync(preferencesPath, JSON.stringify({ enabled: fairyWindowEnabled }, null, 2), 'utf8');
+  } catch {
+    // ignore persistence failures
+  }
+}
+
+function resetFairyBounds() {
+  const nextBounds = getDefaultFairyBounds();
+
+  try {
+    const statePath = getFairyStateFilePath();
+    ensureParentDir(statePath);
+    fs.writeFileSync(statePath, JSON.stringify(nextBounds, null, 2), 'utf8');
+  } catch {
+    // ignore persistence failures
+  }
+
+  if (fairyWindow && !fairyWindow.isDestroyed()) {
+    fairyWindow.setBounds(nextBounds, false);
+  }
+
+  return nextBounds;
 }
 
 function checkBackendHealth() {
@@ -119,12 +269,12 @@ async function startBackend() {
   backendProcess = spawn(javaExecutable, ['-jar', backendJarPath], {
     cwd: resourcesRoot,
     windowsHide: true,
-    stdio: 'ignore'
+    stdio: 'ignore',
   });
 
   backendProcess.once('exit', (code, signal) => {
     backendProcess = null;
-    if (!app.isQuitting) {
+    if (!isQuitting) {
       const reason = signal ? `signal ${signal}` : `code ${code}`;
       dialog.showErrorBox('Backend stopped', `Desktop Fairy backend exited unexpectedly (${reason}).`);
       app.quit();
@@ -134,40 +284,272 @@ async function startBackend() {
   await waitForBackendReady();
 }
 
-function createWindow() {
-  const frontendEntry = resolveFrontendEntry();
+function loadWindowEntry(targetWindow, windowMode) {
+  const frontendEntry = resolveFrontendEntry(windowMode);
+  targetWindow.__windowMode = windowMode;
 
+  if (frontendEntry.type === 'url') {
+    targetWindow.loadURL(frontendEntry.value);
+    return;
+  }
+
+  targetWindow.loadFile(frontendEntry.value, {
+    query: frontendEntry.query,
+  });
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function hideMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.hide();
+}
+
+function toggleMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+    showMainWindow();
+    return;
+  }
+
+  hideMainWindow();
+}
+
+function showFairyWindow() {
+  if (!fairyWindowEnabled) {
+    return;
+  }
+
+  if (!fairyWindow || fairyWindow.isDestroyed()) {
+    createFairyWindow();
+    return;
+  }
+
+  fairyWindow.showInactive();
+  fairyWindow.moveTop();
+  const isDragging = fairyDragController?.isDragging() ?? false;
+  fairyWindow.setIgnoreMouseEvents(!isDragging, { forward: true });
+}
+
+function hideFairyWindow() {
+  if (!fairyWindow || fairyWindow.isDestroyed()) {
+    return;
+  }
+
+  fairyWindow.hide();
+}
+
+function applyFairyWindowEnabled(enabled) {
+  fairyWindowEnabled = Boolean(enabled);
+  persistFairyPreferences();
+
+  if (!fairyWindow || fairyWindow.isDestroyed()) {
+    return;
+  }
+
+  if (fairyWindowEnabled) {
+    showFairyWindow();
+    return;
+  }
+
+  hideFairyWindow();
+}
+
+function createTray() {
+  if (tray) {
+    return;
+  }
+
+  tray = new Tray(createTrayImage());
+  tray.setToolTip('Desktop Fairy');
+
+  const refreshMenu = () => {
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? '隐藏工作台' : '打开工作台',
+        click: () => toggleMainWindow(),
+      },
+      {
+        label: fairyWindowEnabled ? '显示桌面精灵' : '桌面精灵已关闭',
+        enabled: fairyWindowEnabled,
+        click: () => showFairyWindow(),
+      },
+      { type: 'separator' },
+      {
+        label: '退出',
+        click: () => app.quit(),
+      },
+    ]);
+
+    tray.setContextMenu(contextMenu);
+  };
+
+  tray.on('click', () => {
+    toggleMainWindow();
+    refreshMenu();
+  });
+
+  tray.on('right-click', refreshMenu);
+  refreshMenu();
+}
+
+function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1200,
     minHeight: 760,
     show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
-    }
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
   });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
+  mainWindow.on('minimize', (event) => {
+    if (isQuitting) {
+      return;
+    }
+    event.preventDefault();
+    hideMainWindow();
+  });
+
+  mainWindow.on('close', (event) => {
+    if (isQuitting) {
+      return;
+    }
+    event.preventDefault();
+    hideMainWindow();
+  });
+
+  mainWindow.on('show', () => {
+    tray?.setToolTip('Desktop Fairy');
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  if (frontendEntry.type === 'url') {
-    mainWindow.loadURL(frontendEntry.value);
-  } else {
-    mainWindow.loadFile(frontendEntry.value);
+  loadWindowEntry(mainWindow, WORKBENCH_WINDOW_MODE);
+}
+
+function createFairyWindow() {
+  const bounds = readFairyBounds();
+
+  fairyWindow = new BrowserWindow({
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y,
+    show: false,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    autoHideMenuBar: true,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
+  });
+
+  fairyWindow.setAlwaysOnTop(true, 'screen-saver');
+  fairyWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  fairyWindow.once('ready-to-show', () => {
+    fairyWindow.setIgnoreMouseEvents(true, { forward: true });
+    if (fairyWindowEnabled) {
+      fairyWindow.showInactive();
+    }
+  });
+
+  fairyWindow.on('moved', persistFairyBounds);
+  fairyWindow.on('closed', () => {
+    fairyDragController?.stopTimer();
+    fairyWindow = null;
+  });
+
+  // 窗口创建后初始化拖动控制器
+  fairyDragController = createFairyDragController(() => fairyWindow);
+
+  loadWindowEntry(fairyWindow, FAIRY_WINDOW_MODE);
+}
+
+function createWindows() {
+  createMainWindow();
+  createFairyWindow();
+}
+
+function setFairyEnabled(event, enabled) {
+  const targetWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return;
   }
+
+  applyFairyWindowEnabled(enabled);
+}
+
+function registerIpc() {
+  ipcMain.handle('app:get-window-mode', (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+    return targetWindow?.__windowMode || WORKBENCH_WINDOW_MODE;
+  });
+
+  ipcMain.handle('fairy:get-preferences', () => ({
+    enabled: fairyWindowEnabled,
+  }));
+
+  ipcMain.handle('fairy:reset-position', () => resetFairyBounds());
+
+  // 拖动相关 IPC 委托给控制器；控制器在 createFairyWindow 后初始化，
+  // 若窗口尚未创建（极端时序），事件被忽略，等下次拖动时再处理
+  ipcMain.on('fairy:drag-begin', (event, payload) => fairyDragController?.beginDrag(event, payload));
+  ipcMain.on('fairy:drag-update', (event, payload) => fairyDragController?.updateDrag(event, payload));
+  ipcMain.on('fairy:drag-end', () => {
+    if (fairyDragController) {
+      fairyDragController.endDrag();
+    }
+    persistFairyBounds();
+  });
+  ipcMain.on('fairy:set-mouse-ignore', (event, ignore) => fairyDragController?.setMouseIgnore(event, ignore));
+  ipcMain.on('fairy:set-dragging', (event, dragging) => fairyDragController?.setDragging(event, dragging));
+  ipcMain.on('fairy:set-enabled', setFairyEnabled);
 }
 
 async function bootstrap() {
   try {
+    fairyWindowEnabled = readFairyPreferences().enabled;
+    registerIpc();
     await startBackend();
-    createWindow();
+    createWindows();
+    createTray();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     dialog.showErrorBox('Desktop Fairy startup failed', message);
@@ -175,25 +557,34 @@ async function bootstrap() {
   }
 }
 
-app.isQuitting = false;
-
 app.whenReady().then(bootstrap);
 
 app.on('before-quit', () => {
-  app.isQuitting = true;
+  isQuitting = true;
+  fairyDragController?.stopTimer();
+  persistFairyBounds();
+  persistFairyPreferences();
+  tray?.destroy();
+  tray = null;
   if (backendProcess) {
     backendProcess.kill();
   }
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    return;
+  }
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+  showMainWindow();
+  if (fairyWindowEnabled) {
+    showFairyWindow();
   }
 });

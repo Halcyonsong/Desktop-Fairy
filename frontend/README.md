@@ -5,6 +5,9 @@
 - Vue 3 + TypeScript + Vite 前端页面
 - Electron 主进程与桌面窗口启动逻辑
 - electron-builder 打包配置
+- 桌面精灵 native 拖动（基于 koffi 调用 Windows user32.dll）
+
+当前版本：`0.1.1`
 
 如果你只想了解整个项目，请优先阅读仓库根目录的 [README.md](E:\develop\idea\Desktop-Fairy\README.md)。
 
@@ -12,13 +15,18 @@
 
 ```text
 frontend
-├─ src/                    # Vue 页面、组件、状态、API 封装
-├─ electron/               # Electron 主进程脚本与打包准备脚本
-├─ dist/                   # 前端构建产物
-├─ bundle-resources/       # 打包前整理好的后端/JRE/脚本资源
-├─ release/                # electron-builder 输出目录
-├─ package.json            # 前端与打包配置
-├─ vite.config.ts          # Vite 配置
+├─ src/                          # Vue 页面、组件、状态、API 封装
+│  └─ modules/fairy/             # 桌面精灵相关 composables（拖动、穿透、动画、闲聊）
+├─ electron/                     # Electron 主进程脚本与打包准备脚本
+│  ├─ main.cjs                   # 主进程入口
+│  ├─ preload.cjs                # 预加载脚本
+│  ├─ fairyDragController.cjs    # 精灵拖动控制器（native + fallback）
+│  └─ prepare-package.cjs        # 打包资源整理脚本
+├─ dist/                         # 前端构建产物
+├─ bundle-staging/               # 打包前整理好的后端/JRE/脚本资源
+├─ release/                      # electron-builder 输出目录
+├─ package.json                  # 前端与打包配置
+├─ vite.config.ts                # Vite 配置
 ├─ tsconfig.json
 └─ tsconfig.node.json
 ```
@@ -71,8 +79,45 @@ npm run desktop:pack
 - 后端 Jar
 - 本地模型脚本目录
 - `runtime/` 下的 JRE
+- `koffi` native 模块（用于精灵拖动调用 Windows API）
 
-这些资源会先被整理到 `bundle-resources/`，再由 electron-builder 打进安装包。
+这些资源会先被整理到 `bundle-staging/`，再由 electron-builder 打进安装包。
+
+### koffi 与 asarUnpack
+
+`koffi` 是用于在 Electron 主进程中调用 Windows native API（`user32.dll`）的库，当前用于桌面精灵拖动。
+
+由于 koffi 包含 `.node` 二进制文件，**不能被打进 `app.asar`**，必须通过 `asarUnpack` 解包到 `app.asar.unpacked/node_modules/koffi/` 才能被运行时加载。
+
+相关 `package.json` 配置：
+
+```json
+{
+  "dependencies": {
+    "koffi": "^2.9.0"
+  },
+  "build": {
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/koffi/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*"
+    ]
+  }
+}
+```
+
+### 桌面精灵拖动方案
+
+当前拖动逻辑在 `electron/fairyDragController.cjs` 中，采用两层方案：
+
+1. **native 方案（Windows 优先）**：通过 `GetCursorPos` + `MoveWindow` 在物理像素坐标系下操作窗口，规避 Electron DIP 与物理像素的转换问题，解决高 DPI 缩放下方向性受限、抖动等问题
+2. **轮询 fallback**：非 Windows 平台或 koffi 加载失败时，降级到 Electron 原生 API（`screen.getCursorScreenPoint` + `BrowserWindow.setPosition`）轮询方案
+
+渲染进程入口在 `src/modules/fairy/useFairyDragController.ts`，鼠标穿透管理在 `src/modules/fairy/useFairyMouseIgnoreController.ts`。
 
 ## 当前约定
 

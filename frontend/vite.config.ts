@@ -23,6 +23,10 @@ export default defineConfig(({ mode }) => {
                     target: proxyTarget,
                     changeOrigin: true,
                 },
+                '/fairy': {
+                    target: proxyTarget,
+                    changeOrigin: true,
+                },
             },
         },
     };

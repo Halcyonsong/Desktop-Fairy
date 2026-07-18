@@ -64,7 +64,7 @@ public class ChatServiceImpl implements ChatService {
         Sinks.One<Void> stopSignal = chatInterruptSupport.register(sessionId, state);
 
         ChatClientRequestSpec requestSpec = chatClient.prompt()
-                .system(chatRequestOptionsSupport.resolveSystemPrompt(sessionId))
+                .system(chatRequestOptionsSupport.resolveSystemPrompt(sessionId, chatRequestDTO.getSystemPrompt()))
                 .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, sessionId))
                 .user(question);
 

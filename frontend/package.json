@@ -1,6 +1,6 @@
 {
   "name": "desktop-fairy-workbench",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -16,13 +16,14 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.24.0",
-    "@vitejs/plugin-vue": "^5.2.1",
+    "koffi": "^2.9.0",
     "katex": "^0.17.0",
     "pinia": "^2.3.0",
     "vue": "^3.5.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@vitejs/plugin-vue": "^5.2.1",
     "concurrently": "^9.1.2",
     "electron": "33.2.1",
     "electron-builder": "^26.0.12",
@@ -41,19 +42,23 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "node_modules/koffi/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*"
     ],
     "extraResources": [
       {
-        "from": "bundle-resources/backend",
+        "from": "bundle-staging/backend",
         "to": "backend"
       },
       {
-        "from": "bundle-resources/local-model-scripts",
+        "from": "bundle-staging/local-model-scripts",
         "to": "local-model-scripts"
       },
       {
-        "from": "bundle-resources/runtime",
+        "from": "bundle-staging/runtime",
         "to": "runtime"
       }
     ],

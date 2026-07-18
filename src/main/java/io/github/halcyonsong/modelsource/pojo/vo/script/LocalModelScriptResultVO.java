@@ -1,4 +1,4 @@
-package io.github.halcyonsong.modelsource.pojo.vo;
+package io.github.halcyonsong.modelsource.pojo.vo.script;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

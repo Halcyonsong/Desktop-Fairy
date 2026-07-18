@@ -1,7 +1,9 @@
 import { requestJson, jsonHeaders } from '@/api/httpClient';
 import type {
-  LocalModelScriptResult,
+  LocalModelTaskDetail,
+  LocalModelTaskLaunchResult,
   ModelSourceDetail,
+  ModelSourceFetchModelsPayload,
   ModelSourceListItem,
   ModelSourceSavePayload,
   ModelSourceTestPayload,
@@ -65,21 +67,33 @@ export const modelSourceApi = {
     });
   },
 
+  fetchModelSourceModels(payload: ModelSourceFetchModelsPayload) {
+    return requestJson<string[]>('/api/model-source/test/models', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+  },
+
   installLocalTestModel() {
-    return requestJson<LocalModelScriptResult>('/api/model-source/local-test/install', {
+    return requestJson<LocalModelTaskLaunchResult>('/api/model-source/local-test/install', {
       method: 'POST',
     });
   },
 
   startLocalTestModel() {
-    return requestJson<LocalModelScriptResult>('/api/model-source/local-test/start', {
+    return requestJson<LocalModelTaskLaunchResult>('/api/model-source/local-test/start', {
       method: 'POST',
     });
   },
 
   stopLocalTestModel() {
-    return requestJson<LocalModelScriptResult>('/api/model-source/local-test/stop', {
+    return requestJson<LocalModelTaskLaunchResult>('/api/model-source/local-test/stop', {
       method: 'POST',
     });
+  },
+
+  getLocalTestTask(taskId: string) {
+    return requestJson<LocalModelTaskDetail>(`/api/model-source/local-test/tasks/${encodeURIComponent(taskId)}`);
   },
 };

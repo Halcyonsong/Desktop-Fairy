@@ -20,4 +20,6 @@ public class ChatRequestDTO {
     @Valid
     @NotNull(message = "model 不能为空")
     private ModelRequestDTO model;
+
+    private String systemPrompt;
 }

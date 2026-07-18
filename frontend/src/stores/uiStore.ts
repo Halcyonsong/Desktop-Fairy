@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { ViewMode } from '@/types/chat';
+import type { ViewMode } from '@/types/pet';
 
 export const useUiStore = defineStore('ui', () => {
   const viewMode = ref<ViewMode>('chat');
