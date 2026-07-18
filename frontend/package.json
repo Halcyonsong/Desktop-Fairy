@@ -1,6 +1,6 @@
 {
   "name": "desktop-fairy-workbench",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.24.0",
+    "koffi": "^2.9.0",
     "katex": "^0.17.0",
     "pinia": "^2.3.0",
     "vue": "^3.5.13"
@@ -41,7 +42,11 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "node_modules/koffi/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*"
     ],
     "extraResources": [
       {

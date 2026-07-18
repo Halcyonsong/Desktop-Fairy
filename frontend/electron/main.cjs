@@ -3,24 +3,27 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const {
+  FAIRY_WINDOW_WIDTH,
+  FAIRY_WINDOW_HEIGHT,
+  clampFairyPosition,
+  createFairyDragController,
+} = require('./fairyDragController.cjs');
 
 const BACKEND_HEALTH_URL = 'http://127.0.0.1:18765/api/health';
 const FRONTEND_DEV_URL = 'http://127.0.0.1:5173';
 const WORKBENCH_WINDOW_MODE = 'workbench';
 const FAIRY_WINDOW_MODE = 'fairy';
-const FAIRY_WINDOW_WIDTH = 520;
-const FAIRY_WINDOW_HEIGHT = 620;
 
 let backendProcess = null;
 let mainWindow = null;
 let fairyWindow = null;
 let tray = null;
 let isQuitting = false;
-let fairyDragSession = null;
-let fairyDragging = false;
 let fairyWindowEnabled = false;
-let fairyDragTimer = null;
-let fairyDragLastCursor = null;
+
+// 桌面精灵拖动控制器，在 createFairyWindow 后初始化
+let fairyDragController = null;
 
 function isDevMode() {
   return !app.isPackaged;
@@ -130,18 +133,6 @@ function getDefaultFairyBounds() {
     height: FAIRY_WINDOW_HEIGHT,
     x: Math.round(workArea.x + workArea.width - FAIRY_WINDOW_WIDTH - 24),
     y: Math.round(workArea.y + workArea.height - FAIRY_WINDOW_HEIGHT - 24),
-  };
-}
-
-function clampFairyPosition(x, y, width = FAIRY_WINDOW_WIDTH, height = FAIRY_WINDOW_HEIGHT) {
-  const display = screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) });
-  const workArea = display.workArea;
-  const maxX = workArea.x + workArea.width - width;
-  const maxY = workArea.y + workArea.height - height;
-
-  return {
-    x: Math.min(Math.max(workArea.x, Math.round(x)), maxX),
-    y: Math.min(Math.max(workArea.y, Math.round(y)), maxY),
   };
 }
 
@@ -350,7 +341,8 @@ function showFairyWindow() {
 
   fairyWindow.showInactive();
   fairyWindow.moveTop();
-  fairyWindow.setIgnoreMouseEvents(!fairyDragging, { forward: true });
+  const isDragging = fairyDragController?.isDragging() ?? false;
+  fairyWindow.setIgnoreMouseEvents(!isDragging, { forward: true });
 }
 
 function hideFairyWindow() {
@@ -500,10 +492,12 @@ function createFairyWindow() {
 
   fairyWindow.on('moved', persistFairyBounds);
   fairyWindow.on('closed', () => {
-    stopFairyDragTimer();
-    fairyDragSession = null;
+    fairyDragController?.stopTimer();
     fairyWindow = null;
   });
+
+  // 窗口创建后初始化拖动控制器
+  fairyDragController = createFairyDragController(() => fairyWindow);
 
   loadWindowEntry(fairyWindow, FAIRY_WINDOW_MODE);
 }
@@ -511,131 +505,6 @@ function createFairyWindow() {
 function createWindows() {
   createMainWindow();
   createFairyWindow();
-}
-
-function updateFairyDragPosition(pointerScreenX, pointerScreenY) {
-  if (!fairyDragSession || !fairyWindow || fairyWindow.isDestroyed()) {
-    return;
-  }
-
-  // 使用偏移量方式：新窗口位置 = 当前光标位置 + (初始窗口位置 - 初始光标位置)
-  // 这种方式即使在 getCursorScreenPoint() 和 getBounds() 坐标系不一致（DPI 缩放）时，
-  // 由于 offset = bounds(DIP) - cursor(可能物理) 的混合值在后续 cursor + offset 中被抵消，
-  // 仍能计算出正确的窗口位置
-  const next = clampFairyPosition(
-    fairyDragSession.offsetX + pointerScreenX,
-    fairyDragSession.offsetY + pointerScreenY,
-    fairyDragSession.windowWidth,
-    fairyDragSession.windowHeight,
-  );
-
-  fairyWindow.setPosition(next.x, next.y, false);
-}
-
-function stopFairyDragTimer() {
-  if (fairyDragTimer) {
-    clearInterval(fairyDragTimer);
-    fairyDragTimer = null;
-  }
-  fairyDragLastCursor = null;
-}
-
-function beginFairyDrag(event, payload) {
-  const targetWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!targetWindow || targetWindow !== fairyWindow || targetWindow.isDestroyed()) {
-    return;
-  }
-
-  // 统一使用主进程的光标坐标和窗口边界，计算偏移量
-  const cursorPoint = screen.getCursorScreenPoint();
-  const bounds = targetWindow.getBounds();
-
-  // offset = 窗口位置 - 光标位置
-  // 后续 newPosition = cursor + offset = cursor + (window - cursorAtBegin)
-  // 即使坐标系不一致，offset 的"抵消"效应确保结果正确
-  fairyDragSession = {
-    offsetX: bounds.x - cursorPoint.x,
-    offsetY: bounds.y - cursorPoint.y,
-    windowWidth: bounds.width,
-    windowHeight: bounds.height,
-  };
-
-  fairyDragLastCursor = { x: cursorPoint.x, y: cursorPoint.y };
-
-  targetWindow.setIgnoreMouseEvents(false);
-  targetWindow.moveTop();
-
-  // 启动光标轮询定时器，在渲染端 pointer 事件丢失时仍能平滑拖拽
-  stopFairyDragTimer();
-  fairyDragTimer = setInterval(() => {
-    if (!fairyDragSession || !fairyWindow || fairyWindow.isDestroyed()) {
-      stopFairyDragTimer();
-      return;
-    }
-    const cursor = screen.getCursorScreenPoint();
-
-    // 抖动抑制：鼠标增量小于 1 像素时不移动窗口，避免 getCursorScreenPoint 微小波动导致抖动
-    if (fairyDragLastCursor) {
-      const deltaX = cursor.x - fairyDragLastCursor.x;
-      const deltaY = cursor.y - fairyDragLastCursor.y;
-      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
-        return;
-      }
-    }
-
-    updateFairyDragPosition(cursor.x, cursor.y);
-    fairyDragLastCursor = { x: cursor.x, y: cursor.y };
-  }, 16);
-}
-
-function updateFairyDrag(event, payload) {
-  const targetWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!targetWindow || targetWindow !== fairyWindow || targetWindow.isDestroyed() || !fairyDragSession) {
-    return;
-  }
-
-  const pointerScreenX = Number(payload?.screenX);
-  const pointerScreenY = Number(payload?.screenY);
-  // 渲染端传来的坐标无效时，使用主进程光标位置作为兜底
-  const cursorPoint = screen.getCursorScreenPoint();
-  const finalX = Number.isFinite(pointerScreenX) ? pointerScreenX : cursorPoint.x;
-  const finalY = Number.isFinite(pointerScreenY) ? pointerScreenY : cursorPoint.y;
-
-  updateFairyDragPosition(finalX, finalY);
-}
-
-function endFairyDrag() {
-  stopFairyDragTimer();
-  fairyDragging = false;
-  fairyDragSession = null;
-  if (fairyWindow && !fairyWindow.isDestroyed()) {
-    fairyWindow.setIgnoreMouseEvents(true, { forward: true });
-  }
-  persistFairyBounds();
-}
-
-function setFairyMouseIgnore(event, ignore) {
-  const targetWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!targetWindow || targetWindow !== fairyWindow || targetWindow.isDestroyed()) {
-    return;
-  }
-
-  if (fairyDragging) {
-    targetWindow.setIgnoreMouseEvents(false);
-    return;
-  }
-
-  targetWindow.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
-}
-
-function setFairyDragging(event, dragging) {
-  const targetWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!targetWindow || targetWindow !== fairyWindow || targetWindow.isDestroyed()) {
-    return;
-  }
-
-  fairyDragging = Boolean(dragging);
-  targetWindow.setIgnoreMouseEvents(!fairyDragging, { forward: !fairyDragging });
 }
 
 function setFairyEnabled(event, enabled) {
@@ -659,11 +528,18 @@ function registerIpc() {
 
   ipcMain.handle('fairy:reset-position', () => resetFairyBounds());
 
-  ipcMain.on('fairy:drag-begin', beginFairyDrag);
-  ipcMain.on('fairy:drag-update', updateFairyDrag);
-  ipcMain.on('fairy:drag-end', endFairyDrag);
-  ipcMain.on('fairy:set-mouse-ignore', setFairyMouseIgnore);
-  ipcMain.on('fairy:set-dragging', setFairyDragging);
+  // 拖动相关 IPC 委托给控制器；控制器在 createFairyWindow 后初始化，
+  // 若窗口尚未创建（极端时序），事件被忽略，等下次拖动时再处理
+  ipcMain.on('fairy:drag-begin', (event, payload) => fairyDragController?.beginDrag(event, payload));
+  ipcMain.on('fairy:drag-update', (event, payload) => fairyDragController?.updateDrag(event, payload));
+  ipcMain.on('fairy:drag-end', () => {
+    if (fairyDragController) {
+      fairyDragController.endDrag();
+    }
+    persistFairyBounds();
+  });
+  ipcMain.on('fairy:set-mouse-ignore', (event, ignore) => fairyDragController?.setMouseIgnore(event, ignore));
+  ipcMain.on('fairy:set-dragging', (event, dragging) => fairyDragController?.setDragging(event, dragging));
   ipcMain.on('fairy:set-enabled', setFairyEnabled);
 }
 
@@ -685,7 +561,7 @@ app.whenReady().then(bootstrap);
 
 app.on('before-quit', () => {
   isQuitting = true;
-  stopFairyDragTimer();
+  fairyDragController?.stopTimer();
   persistFairyBounds();
   persistFairyPreferences();
   tray?.destroy();

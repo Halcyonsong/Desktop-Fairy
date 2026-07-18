@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import FairyAvatar from '@/components/fairy/FairyAvatar.vue';
 import FairyBubble from '@/components/fairy/FairyBubble.vue';
 import FairyComposer from '@/components/fairy/FairyComposer.vue';
@@ -8,6 +8,7 @@ import { loadPetDefinition } from '@/modules/fairy/petLoader';
 import { useFairyBubbleController } from '@/modules/fairy/useFairyBubbleController';
 import { useFairyDragController } from '@/modules/fairy/useFairyDragController';
 import { useFairyIdleController } from '@/modules/fairy/useFairyIdleController';
+import { useFairyMouseIgnoreController } from '@/modules/fairy/useFairyMouseIgnoreController';
 import { useFairyMotionController } from '@/modules/fairy/useFairyMotionController';
 import { usePetPlayer } from '@/modules/fairy/usePetPlayer';
 import { useFairyChatStore } from '@/stores/fairyChatStore';
@@ -31,7 +32,6 @@ const loading = ref(false);
 const errorMessage = ref('');
 const sessionPickerOpen = ref(false);
 const localDraft = ref('');
-const interactivePinned = ref(false);
 const selectedSessionId = ref('');
 const lastWorkbenchAssistantMessageId = ref('');
 
@@ -170,45 +170,13 @@ const bubbleStyle = computed(() => ({
   bottom: `${bubbleBottom.value}px`,
 }));
 
-function syncNativeMouseIgnore(clientX: number, clientY: number) {
-  if (!isNativeFairyWindow.value || typeof window === 'undefined') {
-    return;
-  }
-
-  if (interactivePinned.value || dragging.value) {
-    window.desktopFairy?.setFairyMouseIgnore?.(false);
-    return;
-  }
-
-  const target = document.elementFromPoint(clientX, clientY);
-  const interactive = target instanceof HTMLElement && !!target.closest('[data-fairy-interactive="true"]');
-  window.desktopFairy?.setFairyMouseIgnore?.(!interactive);
-}
-
-function handleNativeMouseMove(event: MouseEvent) {
-  syncNativeMouseIgnore(event.clientX, event.clientY);
-}
-
-function handleNativeMouseLeave() {
-  if (!isNativeFairyWindow.value) {
-    return;
-  }
-
-  if (interactivePinned.value || dragging.value) {
-    return;
-  }
-
-  window.desktopFairy?.setFairyMouseIgnore?.(true);
-}
-
-function syncInteractivePinnedState() {
-  interactivePinned.value = composerVisible.value || bubbleVisible.value || sessionPickerOpen.value;
-  if (!isNativeFairyWindow.value || typeof window === 'undefined') {
-    return;
-  }
-
-  window.desktopFairy?.setFairyMouseIgnore?.(!(interactivePinned.value || dragging.value));
-}
+// 鼠标穿透管理：委托给 composable
+const interactivePinned = computed(() => composerVisible.value || bubbleVisible.value || sessionPickerOpen.value);
+useFairyMouseIgnoreController({
+  isNativeFairyWindow: () => isNativeFairyWindow.value,
+  isDragging: () => dragging.value,
+  interactivePinned,
+});
 
 function syncBubbleWithTemporaryChat() {
   return syncBubbleFromMessages(fairyChatStore.messages);
@@ -501,14 +469,6 @@ const { shellRef, handlePointerDown, shouldSuppressClick } = useFairyDragControl
   onDragCommitted: handleDragCommitted,
 });
 
-watch(
-  () => [composerVisible.value, bubbleVisible.value, sessionPickerOpen.value, dragging.value] as const,
-  () => {
-    syncInteractivePinnedState();
-  },
-  { immediate: true },
-);
-
 useFairyIdleController({
   enabled: computed(() => fairyStore.enabled),
   onActivity: markGlobalActivity,
@@ -640,26 +600,6 @@ watch(
     }
   },
 );
-
-onMounted(() => {
-  if (!isNativeFairyWindow.value || typeof window === 'undefined') {
-    return;
-  }
-
-  window.desktopFairy?.setFairyMouseIgnore?.(true);
-  window.addEventListener('mousemove', handleNativeMouseMove);
-  window.addEventListener('mouseleave', handleNativeMouseLeave);
-});
-
-onBeforeUnmount(() => {
-  if (!isNativeFairyWindow.value || typeof window === 'undefined') {
-    return;
-  }
-
-  window.removeEventListener('mousemove', handleNativeMouseMove);
-  window.removeEventListener('mouseleave', handleNativeMouseLeave);
-  window.desktopFairy?.setFairyMouseIgnore?.(true);
-});
 </script>
 
 <template>
