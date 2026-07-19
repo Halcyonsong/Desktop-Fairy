@@ -16,3 +16,7 @@ server:
   port: 18765
   servlet:
     context-path: /api
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true

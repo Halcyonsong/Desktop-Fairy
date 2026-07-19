@@ -151,12 +151,17 @@ export const useModelSourceStore = defineStore('modelSource', () => {
     reconcileSelectedChatModel();
   }
 
+  // 幂等保护：避免 HMR 或重复初始化导致 storage 监听器叠加
+  // 参考 fairyChatStore.ts 的 syncInitialized 模式
+  const syncInitialized = ref(false);
+
   function initializeStorageSync() {
-    if (typeof window === 'undefined') {
+    if (syncInitialized.value || typeof window === 'undefined') {
       return;
     }
 
-    window.addEventListener('storage', (event) => {
+    // 使用具名函数而非内联匿名函数，便于未来需要 removeEventListener 时移除
+    const handleStorage = (event: StorageEvent) => {
       if (event.key === CHAT_MODEL_STORAGE_KEY) {
         void syncSelectedChatModelFromStorage();
         return;
@@ -165,7 +170,10 @@ export const useModelSourceStore = defineStore('modelSource', () => {
       if (event.key === MODEL_PARAMS_STORAGE_KEY) {
         chatPreferencesStore.syncFromStorage();
       }
-    });
+    };
+
+    window.addEventListener('storage', handleStorage);
+    syncInitialized.value = true;
   }
 
   function persistSelectedChatModel() {
@@ -354,8 +362,10 @@ export const useModelSourceStore = defineStore('modelSource', () => {
     selectedChatModelLabel,
     availableChatModels,
     selectedChatModelConfig,
-    temperatureInput: chatPreferencesStore.temperatureInput,
-    maxTokensInput: chatPreferencesStore.maxTokensInput,
+    // 使用 computed 包装，保持跨 store 响应式
+    // 直接返回 chatPreferencesStore.temperatureInput 会丢失响应式
+    temperatureInput: computed(() => chatPreferencesStore.temperatureInput),
+    maxTokensInput: computed(() => chatPreferencesStore.maxTokensInput),
     bootstrap,
     refreshSourceCatalog,
     fetchSources,

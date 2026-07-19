@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, DatabaseZap, MonitorCog, Palette, RefreshCw, SlidersHorizontal } from '@lucide/vue';
+import { ArrowLeft, DatabaseZap, FileText, FolderTree, MonitorCog, Palette, RefreshCw, SlidersHorizontal } from '@lucide/vue';
 import { customText } from '@/config/customText';
 import type { SettingsSectionKey, SettingsSectionItem } from '@/types/settings';
 
@@ -25,6 +25,10 @@ function resolveIcon(section: SettingsSectionKey) {
       return RefreshCw;
     case 'desktop-behavior':
       return MonitorCog;
+    case 'log-viewer':
+      return FileText;
+    case 'file-paths':
+      return FolderTree;
   }
 }
 </script>

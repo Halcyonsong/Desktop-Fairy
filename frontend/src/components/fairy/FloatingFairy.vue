@@ -3,6 +3,11 @@ import { computed, ref, watch } from 'vue';
 import FairyAvatar from '@/components/fairy/FairyAvatar.vue';
 import FairyBubble from '@/components/fairy/FairyBubble.vue';
 import FairyComposer from '@/components/fairy/FairyComposer.vue';
+import { useFairyBootstrap } from '@/components/fairy/controllers/useFairyBootstrap';
+import { useFairyComposerController } from '@/components/fairy/controllers/useFairyComposerController';
+import { useFairyConversationController } from '@/components/fairy/controllers/useFairyConversationController';
+import { useFairyMotionOrchestrator } from '@/components/fairy/controllers/useFairyMotionOrchestrator';
+import { useFairyVisibilityController } from '@/components/fairy/controllers/useFairyVisibilityController';
 import { uiText } from '@/config/uiText';
 import { loadPetDefinition } from '@/modules/fairy/petLoader';
 import { useFairyBubbleController } from '@/modules/fairy/useFairyBubbleController';
@@ -36,8 +41,25 @@ const selectedSessionId = ref('');
 const lastWorkbenchAssistantMessageId = ref('');
 
 const isNativeFairyWindow = computed(() => props.windowMode === 'fairy');
-const { animationName, currentFrame } = usePetPlayer(pet);
+const { animationName, currentFrame, setAnimation } = usePetPlayer(pet);
 const { dragging, statusMessage, setDragging, setStatusMessage } = useFairyMotionController(pet, animationName);
+
+// ===== 精灵动作触发逻辑 =====
+// 动作名常量，避免拼写错误
+const PET_ANIMATIONS = {
+  idle: 'idle',
+  dragRight: 'dragRight',
+  dragLeft: 'dragLeft',
+  greet: 'greet',
+  hover: 'hover',
+  requestFailed: 'requestFailed',
+  thinking: 'thinking',
+  typing: 'typing',
+  replying: 'replying',
+} as const;
+
+// 拖动方向跟踪
+const lastDragDeltaX = ref(0);
 const {
   bubbleVisible,
   composerVisible,
@@ -86,9 +108,26 @@ const sessionOptions = computed(() => {
 const currentSending = computed(() => (usingTemporaryChat.value ? fairyChatStore.sending : workbenchStore.sending));
 const temporaryChatHint = computed(() => (fairyChatStore.triggerSource === 'idle' ? '自动陪伴中' : '临时闲聊中'));
 const canClickSend = computed(() => (usingTemporaryChat.value ? fairyChatStore.canSend : !workbenchStore.sending));
+// 是否处于“临时闲聊上下文”：已进入聊天模式，或当前选中的就是临时闲聊会话
+const temporaryChatContextActive = computed(() => chatModeActive.value || usingTemporaryChat.value);
+// 自动闲聊是否启用：仅在桌面精灵开启 + 常驻闲聊开启时为 true
+const idleChatEnabled = computed(() => fairyStore.enabled && fairyStore.residentChatEnabled);
+
+const {
+  safeSetAnimation,
+  triggerTypingWithCycles,
+} = useFairyMotionOrchestrator({
+  pet,
+  usingTemporaryChat,
+  workbenchSending: computed(() => workbenchStore.sending),
+  latestReasoningText: computed(() => workbenchStore.latestReasoningText),
+  streamPhase: computed(() => fairyChatStore.streamPhase),
+  setAnimation,
+  petAnimations: PET_ANIMATIONS,
+});
 
 const selectedSessionTitle = computed(() => {
-  if (chatModeActive.value || usingTemporaryChat.value) {
+  if (temporaryChatContextActive.value) {
     return fairyChatStore.temporaryChatOption.title;
   }
   const current = combinedSessions.value.find((item) => item.sessionId === selectedSessionId.value);
@@ -99,7 +138,7 @@ const inputPlaceholder = computed(() => {
   if (!modelSourceStore.selectedChatModelConfig && usingTemporaryChat.value) {
     return '请先在设置中选择聊天模型';
   }
-  if (chatModeActive.value || usingTemporaryChat.value) {
+  if (temporaryChatContextActive.value) {
     return '可直接发送空消息，让精灵主动陪你聊聊…';
   }
   if (selectedSessionTitle.value && selectedSessionTitle.value !== uiText.chat.untitledSession) {
@@ -143,9 +182,8 @@ const shellStyle = computed(() => ({
 }));
 
 const spriteWrapperStyle = computed(() => ({
-  width: `${frameWidth.value}px`,
-  height: `${frameHeight.value}px`,
-  transform: `scale(${scaleValue.value})`,
+  width: `${Math.round(frameWidth.value * scaleValue.value)}px`,
+  height: `${Math.round(frameHeight.value * scaleValue.value)}px`,
 }));
 
 const spriteStyle = computed(() => {
@@ -155,13 +193,22 @@ const spriteStyle = computed(() => {
     return {};
   }
 
+  // 按缩放后的尺寸直接渲染，避免 transform: scale 导致的模糊
+  const scaledWidth = Math.round(frame.w * scaleValue.value);
+  const scaledHeight = Math.round(frame.h * scaleValue.value);
+  const scaledCanvasWidth = Math.round(definition.canvas.width * scaleValue.value);
+  const scaledCanvasHeight = Math.round(definition.canvas.height * scaleValue.value);
+  const scaledOffsetX = Math.round(frame.x * scaleValue.value);
+  const scaledOffsetY = Math.round(frame.y * scaleValue.value);
+
   return {
-    width: `${frame.w}px`,
-    height: `${frame.h}px`,
+    width: `${scaledWidth}px`,
+    height: `${scaledHeight}px`,
     backgroundImage: `url(${definition.spritesheetPath})`,
     backgroundRepeat: 'no-repeat',
-    backgroundPosition: `${-frame.x}px ${-frame.y}px`,
-    backgroundSize: `${definition.canvas.width}px ${definition.canvas.height}px`,
+    backgroundPosition: `${-scaledOffsetX}px ${-scaledOffsetY}px`,
+    backgroundSize: `${scaledCanvasWidth}px ${scaledCanvasHeight}px`,
+    imageRendering: 'auto' as const,
   };
 });
 
@@ -182,11 +229,69 @@ function syncBubbleWithTemporaryChat() {
   return syncBubbleFromMessages(fairyChatStore.messages);
 }
 
-function findLatestCompletedAssistantMessage(messages: ChatMessage[]) {
-  return [...messages]
-    .reverse()
-    .find((message) => message.role === 'assistant' && message.status === 'completed' && message.content.trim()) ?? null;
-}
+const { ensureSessionListLoaded, ensureModelSourceLoaded } = useFairyBootstrap({
+  workbenchStore,
+  modelSourceStore,
+});
+
+const {
+  findLatestCompletedAssistantMessage,
+  syncDraftFromStore,
+  showLatestReply,
+  enterTemporaryChat,
+  refreshTemporarySession,
+  chooseSession,
+} = useFairyConversationController({
+  fairyChatStore,
+  modelSourceStore,
+  workbenchStore,
+  localDraft,
+  selectedSessionId,
+  sessionPickerOpen,
+  temporaryChatContextActive,
+  syncBubbleWithTemporaryChat,
+  showComposer,
+  showBubble,
+});
+
+const {
+  handleSend,
+  handleStop,
+  handleDraftInput,
+  handleDraftUpdate,
+  handleComposerEnter,
+} = useFairyComposerController({
+  fairyChatStore,
+  workbenchStore,
+  localDraft,
+  selectedSessionId,
+  temporaryChatContextActive,
+  chatModeActive,
+  showComposer,
+  syncBubbleWithTemporaryChat,
+});
+
+const {
+  toggleSessionPicker,
+  handleAvatarClick,
+  handleWindowPointerDown,
+  handleDragHideOverlay,
+} = useFairyVisibilityController({
+  fairyChatStore,
+  bubbleVisible,
+  composerVisible,
+  sessionPickerOpen,
+  chatModeActive,
+  shouldSuppressClick: () => shouldSuppressClick(),
+  showComposer,
+  hideBubbleAndComposer,
+  showLatestReply,
+  safeSetAnimation,
+  greetAnimation: PET_ANIMATIONS.greet,
+  animationName,
+  pet,
+  setStatusMessage,
+});
 
 async function ensurePetLoaded() {
   if (!fairyStore.enabled) {
@@ -208,205 +313,44 @@ async function ensurePetLoaded() {
   }
 }
 
-async function ensureSessionListLoaded() {
-  if (workbenchStore.sessions.length > 0) {
-    return;
-  }
-
-  try {
-    await workbenchStore.bootstrap();
-  } catch {
-    // 保持静默，避免影响精灵展示
-  }
-}
-
-async function ensureModelSourceLoaded() {
-  if (modelSourceStore.sources.length > 0 && (modelSourceStore.selectedChatModelConfig || !modelSourceStore.selectedChatSourceCode)) {
-    return;
-  }
-
-  try {
-    await modelSourceStore.bootstrap();
-  } catch {
-    // 保持静默，避免影响精灵展示
-  }
-}
-
-function syncDraftFromStore() {
-  localDraft.value = fairyChatStore.draft;
-}
-
-async function showLatestReply() {
-  if (usingTemporaryChat.value || chatModeActive.value) {
-    if (syncBubbleWithTemporaryChat()) {
-      return;
-    }
-
-    if (!modelSourceStore.selectedChatModelConfig) {
-      showBubble('请先前往设置选择聊天模型后，再开启闲聊模式。');
-      return;
-    }
-
-    showBubble('当前临时闲聊还没有回复内容，可以直接发送一条空消息或普通消息。');
-    return;
-  }
-
-  if (selectedSessionId.value && workbenchStore.activeSessionId !== selectedSessionId.value) {
-    await workbenchStore.loadSession(selectedSessionId.value);
-  }
-
-  const lastAssistantMessage = [...workbenchStore.messages]
-    .reverse()
-    .find((message) => message.role === 'assistant' && message.content.trim());
-
-  if (lastAssistantMessage) {
-    showBubble(lastAssistantMessage.content);
-  } else {
-    showBubble('当前会话下暂无可展示的助手回复内容。');
-  }
-}
-
-function enterTemporaryChat(source: 'manual' | 'idle') {
-  fairyChatStore.activateTemporaryChat(source);
-  selectedSessionId.value = fairyChatStore.temporaryChatOption.sessionId;
-  syncDraftFromStore();
-  showComposer();
-  syncBubbleWithTemporaryChat();
-}
-
 function markGlobalActivity() {
   fairyChatStore.markUserActivity();
 }
 
 async function tryIdleChat() {
   fairyChatStore.pruneTemporarySessionIfExpired();
-  const triggered = await fairyChatStore.maybeTriggerIdleChat(fairyStore.enabled && fairyStore.residentChatEnabled);
+  const triggered = await fairyChatStore.maybeTriggerIdleChat(idleChatEnabled.value);
   if (triggered) {
     selectedSessionId.value = fairyChatStore.temporaryChatOption.sessionId;
     syncBubbleWithTemporaryChat() || showBubble('桌面精灵刚刚发来了一条闲聊消息。');
     setStatusMessage('已自动触发闲聊模式');
   }
+
+  // 单次 timeout 调度模型：无论这次是否真正触发，都继续安排下一次检测
+  // 这样当用户保持空闲时，会以 idleTriggerMs 为间隔持续检查；
+  // 一旦用户有活动，useFairyIdleController 内部的 handleActivity 会重置倒计时。
+  scheduleIdleCheck();
 }
 
-function toggleSessionPicker() {
-  sessionPickerOpen.value = !sessionPickerOpen.value;
-  if (sessionPickerOpen.value) {
-    showComposer();
-  }
-}
-
-function refreshTemporarySession(event: MouseEvent) {
-  event.stopPropagation();
-  fairyChatStore.refreshTemporarySession();
-  selectedSessionId.value = fairyChatStore.temporaryChatOption.sessionId;
-  localDraft.value = '';
-  sessionPickerOpen.value = false;
-  showComposer();
-  showBubble('已刷新临时会话。');
-}
-
-async function chooseSession(sessionId: string) {
-  selectedSessionId.value = sessionId;
-  sessionPickerOpen.value = false;
-  showComposer();
-
-  if (fairyChatStore.isTemporaryChatSession(sessionId)) {
-    enterTemporaryChat('manual');
-    await showLatestReply();
+// 鼠标悬停在精灵上时触发 hover 动作（仅在非拖动、非发送状态下）
+function handleAvatarHover() {
+  if (dragging.value || fairyChatStore.sending) {
     return;
   }
-
-  fairyChatStore.deactivateTemporaryChat(false);
-  if (workbenchStore.activeSessionId !== sessionId) {
-    await workbenchStore.loadSession(sessionId);
-  }
+  safeSetAnimation(PET_ANIMATIONS.hover);
 }
 
-async function handleAvatarClick() {
-  if (shouldSuppressClick()) {
+// 鼠标离开精灵时回到 idle
+function handleAvatarLeave() {
+  if (dragging.value || fairyChatStore.sending) {
     return;
   }
-
-  if (bubbleVisible.value || composerVisible.value) {
-    hideBubbleAndComposer();
-    if (!fairyChatStore.sending && chatModeActive.value) {
-      fairyChatStore.deactivateTemporaryChat(false);
-    }
-    return;
-  }
-
-  showComposer();
-  await showLatestReply();
-  setStatusMessage(`当前动作：${animationName.value || pet.value?.defaultAnimation || 'idle'}`);
+  safeSetAnimation(PET_ANIMATIONS.idle);
 }
 
 function handleDragCommitted() {
   fairyChatStore.markUserActivity();
   setStatusMessage('已记住新的悬浮位置');
-}
-
-async function handleSend() {
-  const question = localDraft.value.trim();
-
-  showComposer();
-
-  if (usingTemporaryChat.value || chatModeActive.value) {
-    if (!fairyChatStore.canSend) {
-      return;
-    }
-
-    // 临时闲聊模式下允许发送空消息，触发后端兜底自动回复
-    fairyChatStore.setDraft(question);
-    try {
-      await fairyChatStore.sendTemporaryMessage(
-        question,
-        chatModeActive.value ? fairyChatStore.triggerSource || 'manual' : 'manual',
-      );
-      syncBubbleWithTemporaryChat();
-    } catch {
-      // 错误由 store 状态和气泡承接
-    } finally {
-      // 无论成功或失败，都清空输入框，避免 sending 恢复后输入框还残留旧内容
-      localDraft.value = '';
-      fairyChatStore.setDraft('');
-    }
-    return;
-  }
-
-  // 普通会话模式下，空消息不发送
-  if (!question || workbenchStore.sending) {
-    return;
-  }
-
-  if (!selectedSessionId.value) {
-    await workbenchStore.createSession();
-    selectedSessionId.value = workbenchStore.activeSessionId;
-  } else if (workbenchStore.activeSessionId !== selectedSessionId.value) {
-    await workbenchStore.loadSession(selectedSessionId.value);
-  }
-
-  localDraft.value = '';
-  await workbenchStore.sendMessage(question);
-}
-
-function handleStop() {
-  if (usingTemporaryChat.value || chatModeActive.value) {
-    fairyChatStore.stopTemporaryChat();
-    return;
-  }
-
-  void workbenchStore.stopChat();
-}
-
-function handleWindowPointerDown(event: MouseEvent) {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  if (sessionPickerOpen.value && !target.closest('.floating-fairy-session-picker-anchor')) {
-    sessionPickerOpen.value = false;
-  }
 }
 
 function handleBubblePointerEnter() {
@@ -437,40 +381,31 @@ function handleComposerBlur() {
   unlockComposer();
 }
 
-function handleDraftInput(event: Event) {
-  const target = event.target;
-  if (!(target instanceof HTMLInputElement)) {
-    return;
-  }
-
-  localDraft.value = target.value;
-  if (usingTemporaryChat.value || chatModeActive.value) {
-    fairyChatStore.setDraft(localDraft.value);
-  }
-}
-
-async function handleComposerEnter(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || event.shiftKey) {
-    return;
-  }
-
-  event.preventDefault();
-  await handleSend();
-}
-
 const { shellRef, handlePointerDown, shouldSuppressClick } = useFairyDragController({
   fairyStore,
-  hideOverlay: () => {
-    hideBubbleAndComposer();
-    sessionPickerOpen.value = false;
+  hideOverlay: handleDragHideOverlay,
+  onDragStateChange: (isDragging: boolean) => {
+    setDragging(isDragging);
+    // 拖动开始时不切换动作；拖动结束后回到 idle
+    if (!isDragging) {
+      safeSetAnimation(PET_ANIMATIONS.idle);
+    }
   },
-  onDragStateChange: setDragging,
+  onDragMove: (deltaX: number) => {
+    // 根据水平拖动方向切换动作（向右 > 0，向左 < 0）
+    const direction = deltaX > 0 ? PET_ANIMATIONS.dragRight : PET_ANIMATIONS.dragLeft;
+    if (direction !== animationName.value) {
+      safeSetAnimation(direction);
+    }
+  },
   useNativeWindowDrag: () => isNativeFairyWindow.value,
   onDragCommitted: handleDragCommitted,
 });
 
-useFairyIdleController({
-  enabled: computed(() => fairyStore.enabled),
+const { scheduleIdleCheck } = useFairyIdleController({
+  // 只有桌面精灵启用且常驻闲聊开启时，才真正调度自动闲聊 timeout
+  enabled: idleChatEnabled,
+  idleDelayMs: computed(() => fairyStore.idleTriggerMs),
   onActivity: markGlobalActivity,
   onIdleCheck: tryIdleChat,
   onWindowPointerDown: handleWindowPointerDown,
@@ -486,6 +421,83 @@ watch(
     void ensurePetLoaded();
   },
   { immediate: true },
+);
+
+// 监听发送状态和流式阶段，切换精灵动作
+// 临时闲聊模式：按 streamPhase 精确切换 typing → thinking → replying → idle
+// 工作台模式：根据 sending 和 reasoning 状态切换
+// typing 阶段特殊处理：循环 3 次 typing 动作后再切换到下一阶段
+watch(
+  () => [
+    usingTemporaryChat.value,
+    fairyChatStore.streamPhase,
+    workbenchStore.sending,
+    workbenchStore.latestReasoningText,
+  ] as const,
+  ([isTemporaryChat, phase, isWorkbenchSending, workbenchReasoning], oldValues) => {
+    if (dragging.value) {
+      return;
+    }
+
+    // 判断当前阶段应该播放的动作
+    let targetAction: string;
+    if (isTemporaryChat) {
+      switch (phase) {
+        case 'typing':
+          targetAction = PET_ANIMATIONS.typing;
+          break;
+        case 'thinking':
+          targetAction = PET_ANIMATIONS.thinking;
+          break;
+        case 'replying':
+          targetAction = PET_ANIMATIONS.replying;
+          break;
+        case 'idle':
+        default:
+          targetAction = PET_ANIMATIONS.idle;
+          break;
+      }
+    } else if (isWorkbenchSending) {
+      if (workbenchReasoning) {
+        targetAction = PET_ANIMATIONS.thinking;
+      } else {
+        targetAction = PET_ANIMATIONS.replying;
+      }
+    } else {
+      targetAction = PET_ANIMATIONS.idle;
+    }
+
+    // typing 动作特殊处理：如果当前不是 typing，触发带 3 次循环的 typing
+    if (targetAction === PET_ANIMATIONS.typing && animationName.value !== PET_ANIMATIONS.typing) {
+      triggerTypingWithCycles();
+      return;
+    }
+
+    // 非 typing 动作直接切换
+    if (targetAction !== PET_ANIMATIONS.typing && animationName.value !== targetAction) {
+      safeSetAnimation(targetAction);
+    }
+  },
+);
+
+// 监听临时闲聊的错误状态：失败时触发 requestFailed 动作
+watch(
+  () => fairyChatStore.errorMessage,
+  (error) => {
+    if (!error) {
+      return;
+    }
+    safeSetAnimation(PET_ANIMATIONS.requestFailed);
+  },
+);
+
+watch(
+  () => fairyChatStore.draft,
+  () => {
+    if (temporaryChatContextActive.value) {
+      syncDraftFromStore();
+    }
+  },
 );
 
 watch(
@@ -571,7 +583,7 @@ watch(
       return;
     }
 
-    if (chatModeActive.value || usingTemporaryChat.value) {
+    if (temporaryChatContextActive.value) {
       return;
     }
 
@@ -615,9 +627,6 @@ watch(
         @pointerleave="handleBubblePointerLeave"
       />
 
-      <div class="floating-fairy-glow"></div>
-      <div class="floating-fairy-shadow"></div>
-
       <FairyAvatar
         :loading="loading"
         :has-sprite="!!pet && !!currentFrame"
@@ -625,6 +634,8 @@ watch(
         :sprite-style="spriteStyle"
         @pointerdown="handlePointerDown"
         @click="handleAvatarClick"
+        @pointerenter="handleAvatarHover"
+        @pointerleave="handleAvatarLeave"
       />
 
       <FairyComposer
@@ -645,6 +656,7 @@ watch(
         @choose-session="chooseSession"
         @refresh-temporary-session="refreshTemporarySession"
         @draft-input="handleDraftInput"
+        @draft-update="handleDraftUpdate"
         @composer-enter="handleComposerEnter"
         @composer-focus="handleComposerFocus"
         @composer-blur="handleComposerBlur"

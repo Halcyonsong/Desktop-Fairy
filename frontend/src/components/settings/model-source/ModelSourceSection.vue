@@ -141,6 +141,9 @@ async function stopLocalTestModel() {
 
 async function refreshModelSources() {
   await modelSourceStore.refreshSourceCatalog();
+  if (!modelSourceStore.errorMessage) {
+    modelSourceStore.successMessage = '已从保存配置中重新加载供应商列表。';
+  }
 }
 
 function toggleLogPanel() {

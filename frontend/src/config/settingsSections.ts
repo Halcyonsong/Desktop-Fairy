@@ -32,4 +32,16 @@ export const settingsSections: SettingsSectionItem[] = [
     description: '配置桌面精灵显示与悬浮行为',
     enabled: true,
   },
+  {
+    key: 'log-viewer',
+    label: '日志查看',
+    description: '查看应用运行日志，用于开发调试和问题排查',
+    enabled: true,
+  },
+  {
+    key: 'file-paths',
+    label: '文件路径',
+    description: '查看所有应用数据的存储位置',
+    enabled: true,
+  },
 ];

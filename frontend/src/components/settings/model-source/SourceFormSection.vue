@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronDown, Copy, Eye, EyeOff, Save, X } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useSourceFormController } from '@/components/settings/model-source/controllers/useSourceFormController';
 import { customText } from '@/config/customText';
 import type { ModelProvider, ModelSourceFormState } from '@/types/chat';
 
@@ -12,74 +12,22 @@ const props = defineProps<{
   saving: boolean;
 }>();
 
-const apiKeyVisible = ref(false);
-const providerOpen = ref(false);
-const providerFilter = ref('');
-const providerRef = ref<HTMLElement | null>(null);
-
-const filteredProviderOptions = computed(() => {
-  const keyword = providerFilter.value.trim().toLowerCase();
-  if (!keyword) {
-    return props.providerOptions;
-  }
-
-  return props.providerOptions.filter((provider) => provider.toLowerCase().includes(keyword));
-});
-
-function toggleApiKeyVisible() {
-  apiKeyVisible.value = !apiKeyVisible.value;
-}
-
-function hideApiKey() {
-  apiKeyVisible.value = false;
-}
-
-function clearField(field: 'name' | 'baseUrl' | 'apiKey') {
-  props.form[field] = '';
-  if (field === 'apiKey') {
-    hideApiKey();
-  }
-}
-
-function chooseProvider(provider: string) {
-  props.form.provider = provider;
-  providerFilter.value = '';
-  providerOpen.value = false;
-}
-
-function toggleProviderOpen() {
-  providerOpen.value = !providerOpen.value;
-  if (!providerOpen.value) {
-    providerFilter.value = '';
-  }
-}
-
-function handlePointerDown(event: MouseEvent) {
-  const target = event.target;
-  if (providerOpen.value && providerRef.value && target instanceof Node && !providerRef.value.contains(target)) {
-    providerOpen.value = false;
-    providerFilter.value = '';
-  }
-}
-
-async function copyValue(value: string) {
-  if (!value.trim()) {
-    return;
-  }
-
-  try {
-    await navigator.clipboard?.writeText(value);
-  } catch {
-    // ignore
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('mousedown', handlePointerDown);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener('mousedown', handlePointerDown);
+const {
+  apiKeyVisible,
+  providerOpen,
+  providerFilter,
+  providerRef,
+  copiedField,
+  filteredProviderOptions,
+  toggleApiKeyVisible,
+  hideApiKey,
+  clearField,
+  chooseProvider,
+  toggleProviderOpen,
+  copyValue,
+} = useSourceFormController({
+  form: props.form,
+  providerOptions: props.providerOptions,
 });
 
 const emit = defineEmits<{
@@ -142,7 +90,7 @@ const emit = defineEmits<{
         <div class="settings-input-shell settings-input-shell--double-action">
           <input v-model="form.baseUrl" type="text" placeholder="https://api.deepseek.com" />
           <div v-if="form.baseUrl" class="settings-input-actions">
-            <button class="settings-input-action" type="button" title="复制 Base URL" @click="copyValue(form.baseUrl)">
+            <button class="settings-input-action" type="button" :title="copiedField === 'baseUrl' ? '已复制！' : '复制 Base URL'" @click="copyValue(form.baseUrl, 'baseUrl')">
               <Copy :size="15" />
             </button>
             <button class="settings-input-action" type="button" title="清空 Base URL" @click="clearField('baseUrl')">
@@ -175,8 +123,8 @@ const emit = defineEmits<{
               v-if="form.apiKey"
               class="settings-input-action"
               type="button"
-              title="复制 API Key"
-              @click="copyValue(form.apiKey)"
+              :title="copiedField === 'apiKey' ? '已复制！' : '复制 API Key'"
+              @click="copyValue(form.apiKey, 'apiKey')"
             >
               <Copy :size="15" />
             </button>

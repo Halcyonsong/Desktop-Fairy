@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RotateCcw } from '@lucide/vue';
+import { RotateCcw, Timer } from '@lucide/vue';
 import { fairyConfig } from '@/config/fairyConfig';
 import { customText } from '@/config/customText';
 import { useFairyStore } from '@/stores/fairyStore';
@@ -55,6 +55,51 @@ const fairyStore = useFairyStore();
             >
               <span class="toggle-switch__thumb" />
             </button>
+          </div>
+
+          <!-- 自动闲聊触发时间滑动条 -->
+          <!-- 常驻闲聊未开启时灰显但仍可调整，便于用户预览配置；实际触发逻辑在 fairyChatStore 中根据 residentChatEnabled 判断 -->
+          <div
+            class="settings-inline-panel settings-inline-panel--soft desktop-behavior-idle-trigger"
+            :class="{ 'desktop-behavior-idle-trigger--disabled': !fairyStore.residentChatEnabled }"
+          >
+            <div class="desktop-behavior-idle-trigger__info">
+              <h3>
+                <Timer :size="14" />
+                {{ customText.desktopBehavior.idleTriggerTitle }}
+              </h3>
+              <p>{{ customText.desktopBehavior.idleTriggerDescription }}</p>
+            </div>
+
+            <div class="desktop-behavior-idle-trigger__control">
+              <label class="settings-field">
+                <div class="desktop-behavior-field__header">
+                  <span>{{ customText.desktopBehavior.idleTriggerLabel }} · {{ fairyStore.idleTriggerLabel }}</span>
+                </div>
+                <input
+                  type="range"
+                  :min="fairyConfig.idleTrigger.min"
+                  :max="fairyConfig.idleTrigger.max"
+                  :step="fairyConfig.idleTrigger.step"
+                  :value="fairyStore.idleTriggerMs"
+                  :disabled="!fairyStore.residentChatEnabled"
+                  :aria-label="customText.desktopBehavior.idleTriggerTitle"
+                  @input="fairyStore.setIdleTriggerMs(Number(($event.target as HTMLInputElement).value))"
+                  @change="fairyStore.commitIdleTriggerMs()"
+                />
+              </label>
+
+              <button
+                class="desktop-behavior-action-button desktop-behavior-action-button--secondary"
+                type="button"
+                :disabled="!fairyStore.residentChatEnabled"
+                :title="customText.desktopBehavior.idleTriggerResetTitle"
+                @click="fairyStore.resetIdleTriggerMs()"
+              >
+                <RotateCcw :size="14" />
+                {{ customText.desktopBehavior.idleTriggerResetButton }}
+              </button>
+            </div>
           </div>
 
           <div class="settings-tag-list">
@@ -131,3 +176,63 @@ const fairyStore = useFairyStore();
     </section>
   </div>
 </template>
+
+<style scoped>
+/* 自动闲聊触发时间滑动条区块 */
+.desktop-behavior-idle-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+}
+
+.desktop-behavior-idle-trigger__info {
+  min-width: 0;
+}
+
+.desktop-behavior-idle-trigger__info h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.desktop-behavior-idle-trigger__info p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.desktop-behavior-idle-trigger__control {
+  display: grid;
+  gap: 8px;
+}
+
+.desktop-behavior-idle-trigger__control .settings-field {
+  gap: 6px;
+}
+
+.desktop-behavior-idle-trigger__control input[type='range'] {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+/* 常驻闲聊未开启时灰显滑动条区块 */
+.desktop-behavior-idle-trigger--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.desktop-behavior-idle-trigger--disabled .desktop-behavior-idle-trigger__info {
+  pointer-events: auto;
+}
+
+@media (max-width: 720px) {
+  .desktop-behavior-idle-trigger {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

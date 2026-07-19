@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ChevronDown, LoaderCircle, MessageCircleMore, RefreshCw, SendHorizontal, Sparkles, Square } from '@lucide/vue';
+import { ChevronDown, LoaderCircle, MessageCircleMore, Mic, RefreshCw, SendHorizontal, Sparkles, Square } from '@lucide/vue';
+import { computed } from 'vue';
+import { useVoskVoiceController } from '@/modules/useVoskVoiceController';
 
 interface FairySessionOption {
   sessionId: string;
@@ -28,6 +30,7 @@ const emit = defineEmits<{
   chooseSession: [sessionId: string];
   refreshTemporarySession: [event: MouseEvent];
   draftInput: [event: Event];
+  draftUpdate: [value: string];
   composerEnter: [event: KeyboardEvent];
   composerFocus: [];
   composerBlur: [];
@@ -36,6 +39,30 @@ const emit = defineEmits<{
   pointerenter: [];
   pointerleave: [];
 }>();
+
+// 语音输入控制器：本地离线识别（vosk-browser）
+const voiceInput = useVoskVoiceController({
+  onFinalResult: (transcript) => {
+    const current = props.localDraft;
+    const separator = current && !current.endsWith(' ') ? '' : '';
+    emit('draftUpdate', current + separator + transcript);
+  },
+  onError: (error, message) => {
+    if (error !== 'no-speech' && error !== 'aborted') {
+      console.warn('[fairy voiceInput]', message);
+    }
+  },
+});
+
+const voiceButtonTitle = computed(() => {
+  if (!voiceInput.isSupported.value) {
+    return '当前环境不支持语音输入';
+  }
+  if (voiceInput.isLoading.value) {
+    return voiceInput.loadingMessage.value || '正在准备语音识别...';
+  }
+  return voiceInput.isListening.value ? '点击停止语音输入' : '点击开始语音输入（首次使用需下载模型）';
+});
 </script>
 
 <template>
@@ -113,16 +140,36 @@ const emit = defineEmits<{
         >
           <Square :size="13" />
         </button>
-        <button
-          v-else
-          class="floating-fairy-inline-send"
-          type="button"
-          :disabled="!props.canClickSend"
-          title="发送"
-          @click="emit('send')"
-        >
-          <SendHorizontal :size="14" />
-        </button>
+        <template v-else>
+          <!-- 语音输入按钮：放在发送键左边 -->
+          <button
+            v-if="voiceInput.isSupported.value"
+            class="floating-fairy-inline-voice"
+            :class="{
+              'floating-fairy-inline-voice--active': voiceInput.isListening.value,
+              'floating-fairy-inline-voice--loading': voiceInput.isLoading.value,
+            }"
+            type="button"
+            :title="voiceButtonTitle"
+            :disabled="voiceInput.isLoading.value"
+            @click="voiceInput.toggle()"
+          >
+            <span v-if="voiceInput.isLoading.value && voiceInput.downloadProgress.value" class="floating-fairy-inline-voice__percent">
+              {{ voiceInput.downloadProgress.value.percent }}%
+            </span>
+            <LoaderCircle v-else-if="voiceInput.isLoading.value" :size="13" class="spin" />
+            <Mic v-else :size="13" />
+          </button>
+          <button
+            class="floating-fairy-inline-send"
+            type="button"
+            :disabled="!props.canClickSend"
+            title="发送"
+            @click="emit('send')"
+          >
+            <SendHorizontal :size="14" />
+          </button>
+        </template>
       </div>
 
       <div v-if="props.currentSending" class="floating-fairy-sending-indicator">

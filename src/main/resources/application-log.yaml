@@ -1,6 +1,9 @@
 logging:
   file:
     name: ${app.storage.log-path}
+  charset:
+    console: UTF-8
+    file: UTF-8
   level:
     io.github.halcyonsong: info
   pattern:

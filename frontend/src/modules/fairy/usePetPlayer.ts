@@ -1,7 +1,9 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { FAIRY_TIMING } from '@/config/uiConstants';
 import type { PetAnimationClip, PetDefinition } from '@/types/pet';
 
-const FALLBACK_INTERVAL = 180;
+// 帧间隔回退值集中到 config/uiConstants.ts，便于统一调整
+const FALLBACK_INTERVAL = FAIRY_TIMING.petFrameFallbackIntervalMs;
 
 function getFrameInterval(clip: PetAnimationClip | undefined) {
   if (!clip?.fps || clip.fps <= 0) {
@@ -16,6 +18,12 @@ export function usePetPlayer(pet: Ref<PetDefinition | null>) {
   const animationCycle = ref(0);
 
   let timer: number | null = null;
+  // 当前动作的最大循环次数（达到后触发 onCycleComplete 回调）
+  // null/0 表示无限制（循环动作一直播放，一次性动作播完回 default）
+  let cycleLimit: number | null = null;
+  let onCycleComplete: (() => void) | null = null;
+  // 记录设置 cycleLimit 时所处的动画名，动画切换后失效
+  let cycleLimitAnimation: string | null = null;
 
   const animationEntries = computed(() => {
     const definition = pet.value;
@@ -52,7 +60,13 @@ export function usePetPlayer(pet: Ref<PetDefinition | null>) {
     }
   }
 
-  function setAnimation(name: string) {
+  function clearCycleLimit() {
+    cycleLimit = null;
+    onCycleComplete = null;
+    cycleLimitAnimation = null;
+  }
+
+  function setAnimation(name: string, options?: { cycles?: number; onCycleComplete?: () => void }) {
     if (!pet.value) {
       return;
     }
@@ -60,6 +74,16 @@ export function usePetPlayer(pet: Ref<PetDefinition | null>) {
     const targetName = pet.value.animations[name] ? name : pet.value.defaultAnimation;
     animationName.value = targetName;
     framePointer.value = 0;
+    animationCycle.value = 0;
+
+    // 设置循环次数限制（仅对循环动作有效）
+    if (options?.cycles && options.cycles > 0 && options.onCycleComplete) {
+      cycleLimit = options.cycles;
+      onCycleComplete = options.onCycleComplete;
+      cycleLimitAnimation = targetName;
+    } else {
+      clearCycleLimit();
+    }
   }
 
   function scheduleNextTick() {
@@ -76,6 +100,19 @@ export function usePetPlayer(pet: Ref<PetDefinition | null>) {
         if (clip.loop) {
           framePointer.value = 0;
           animationCycle.value += 1;
+
+          // 检查是否达到循环次数限制
+          if (
+            cycleLimit
+            && onCycleComplete
+            && cycleLimitAnimation === animationName.value
+            && animationCycle.value >= cycleLimit
+          ) {
+            const callback = onCycleComplete;
+            clearCycleLimit();
+            callback();
+            return; // 不继续 scheduleNextTick，由回调负责切换动作
+          }
         } else {
           const definition = pet.value;
           const fallbackAnimation = definition?.defaultAnimation ?? animationName.value;

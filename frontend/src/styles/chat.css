@@ -696,6 +696,40 @@
   color: var(--color-text-muted);
 }
 
+/* 语音输入按钮：监听中红色背景 + 白色图标 + 缩放脉冲动画 */
+.composer-voice-button--active {
+  background: var(--color-danger);
+  color: #fff;
+  animation: composer-voice-pulse 1.5s ease-in-out infinite;
+}
+
+/* 下载百分比文字 */
+.composer-voice-button__percent {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.composer-voice-button .spin {
+  animation: composer-voice-spin 1s linear infinite;
+}
+
+@keyframes composer-voice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes composer-voice-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
 .send-button {
   width: 38px;
   height: 38px;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { MoreHorizontal, Plus, RefreshCw, Search, Settings2, Sparkles } from '@lucide/vue';
+import { CircleHelp, MoreHorizontal, Plus, RefreshCw, Search, Settings2, Sparkles } from '@lucide/vue';
 import { computed, nextTick, ref } from 'vue';
+import SessionHelpDialog from '@/components/session/SessionHelpDialog.vue';
 import { appConfig } from '@/config/appConfig';
 import { customText } from '@/config/customText';
 import { uiText } from '@/config/uiText';
@@ -31,16 +32,13 @@ const emit = defineEmits<{
 
 const keyword = ref('');
 const openMenuSessionId = ref('');
-
-// 自定义重命名模态框状态（替代 window.prompt，Electron 环境下 window.prompt 默认禁用）
 const renameModalOpen = ref(false);
 const renameTarget = ref<SidebarSessionItem | null>(null);
 const renameValue = ref('');
 const renameInputRef = ref<HTMLInputElement | null>(null);
-
-// 自定义删除确认模态框状态（替代 window.confirm，Electron 环境下 window.confirm 默认禁用）
 const deleteModalOpen = ref(false);
 const deleteTarget = ref<SidebarSessionItem | null>(null);
+const helpPopoverOpen = ref(false);
 
 const filteredSessions = computed(() => {
   const value = keyword.value.trim().toLowerCase();
@@ -60,10 +58,7 @@ function toggleMenu(sessionId: string) {
 }
 
 function renameSession(session: SidebarSessionItem) {
-  if (session.temporary) {
-    return;
-  }
-
+  if (session.temporary) return;
   openMenuSessionId.value = '';
   renameTarget.value = session;
   renameValue.value = session.title;
@@ -92,10 +87,7 @@ function cancelRename() {
 }
 
 function deleteSession(session: SidebarSessionItem) {
-  if (session.temporary) {
-    return;
-  }
-
+  if (session.temporary) return;
   openMenuSessionId.value = '';
   deleteTarget.value = session;
   deleteModalOpen.value = true;
@@ -103,9 +95,7 @@ function deleteSession(session: SidebarSessionItem) {
 
 function confirmDelete() {
   const target = deleteTarget.value;
-  if (target) {
-    emit('delete', target.sessionId);
-  }
+  if (target) emit('delete', target.sessionId);
   deleteModalOpen.value = false;
   deleteTarget.value = null;
 }
@@ -118,6 +108,10 @@ function cancelDelete() {
 function refreshTemporarySession(event: MouseEvent) {
   event.stopPropagation();
   emit('refreshTemporarySession');
+}
+
+function toggleHelpPopover() {
+  helpPopoverOpen.value = !helpPopoverOpen.value;
 }
 </script>
 
@@ -154,8 +148,7 @@ function refreshTemporarySession(event: MouseEvent) {
           <span class="session-item__title-row">
             <span class="session-item__title">{{ session.title }}</span>
             <span v-if="session.temporary" class="session-item__badge">
-              <Sparkles :size="11" />
-              临时
+              <Sparkles :size="11" />临时
             </span>
           </span>
           <span v-if="session.summary" class="session-item__summary" :title="session.summary">{{ session.summary }}</span>
@@ -181,18 +174,25 @@ function refreshTemporarySession(event: MouseEvent) {
     </div>
 
     <div class="session-sidebar__footer">
-      <button
-        class="session-sidebar__nav-button"
-        :class="{ 'session-sidebar__nav-button--active': viewMode === 'settings' }"
-        type="button"
-        :title="customText.session.settingsHint"
-        @click="emit('switchView', 'settings')"
-      >
-        <Settings2 :size="18" />
-      </button>
+      <div class="session-sidebar__footer-tools">
+        <button
+          class="session-sidebar__nav-button"
+          :class="{ 'session-sidebar__nav-button--active': viewMode === 'settings' }"
+          type="button"
+          :title="customText.session.settingsHint"
+          @click="emit('switchView', 'settings')"
+        >
+          <Settings2 :size="18" />
+        </button>
+
+        <button class="session-sidebar__nav-button session-sidebar__help-button" type="button" title="使用说明" @click="toggleHelpPopover">
+          <CircleHelp :size="18" />
+        </button>
+      </div>
     </div>
 
-    <!-- 重命名模态框（替代 window.prompt） -->
+    <SessionHelpDialog :open="helpPopoverOpen" @close="helpPopoverOpen = false" />
+
     <Transition name="modal-fade">
       <div v-if="renameModalOpen" class="session-modal-overlay" @click.self="cancelRename">
         <div class="session-modal" role="dialog" aria-modal="true">
@@ -213,7 +213,6 @@ function refreshTemporarySession(event: MouseEvent) {
       </div>
     </Transition>
 
-    <!-- 删除确认模态框（替代 window.confirm） -->
     <Transition name="modal-fade">
       <div v-if="deleteModalOpen" class="session-modal-overlay" @click.self="cancelDelete">
         <div class="session-modal" role="dialog" aria-modal="true">
@@ -228,3 +227,17 @@ function refreshTemporarySession(event: MouseEvent) {
     </Transition>
   </section>
 </template>
+
+<style scoped>
+.session-sidebar__footer-tools {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.session-sidebar__help-button {
+  margin-left: auto;
+}
+</style>

@@ -1,7 +1,9 @@
 import { computed, ref } from 'vue';
+import { FAIRY_TIMING } from '@/config/uiConstants';
 import type { ChatMessage } from '@/types/chat';
 
-const AUTO_HIDE_MS = 9000;
+// 气泡自动隐藏时间集中到 config/uiConstants.ts，便于统一调整 UI 节奏
+const AUTO_HIDE_MS = FAIRY_TIMING.bubbleAutoHideMs;
 
 export function useFairyBubbleController() {
   const bubbleVisible = ref(false);

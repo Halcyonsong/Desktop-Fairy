@@ -27,28 +27,6 @@
   cursor: grabbing;
 }
 
-.floating-fairy-glow {
-  position: absolute;
-  inset: auto 50% 44px;
-  width: 156px;
-  height: 48px;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgb(79 113 255 / 0.24) 0%, rgb(79 113 255 / 0.08) 46%, transparent 74%);
-  filter: blur(12px);
-  transform: translateX(-50%);
-}
-
-.floating-fairy-shadow {
-  position: absolute;
-  inset: auto 50% 40px;
-  width: 136px;
-  height: 20px;
-  border-radius: 999px;
-  background: rgb(34 44 78 / 0.14);
-  filter: blur(10px);
-  transform: translateX(-50%);
-}
-
 .floating-fairy-avatar {
   position: relative;
   z-index: 6;
@@ -158,7 +136,7 @@
 .floating-fairy-inline-composer {
   position: relative;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  grid-template-columns: 34px minmax(0, 1fr) 26px 26px;
   align-items: center;
   gap: 6px;
   min-height: 38px;
@@ -172,6 +150,66 @@
 }
 
 .floating-fairy-session-trigger,
+.floating-fairy-inline-voice {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.floating-fairy-inline-voice:hover {
+  background: var(--color-hover-soft);
+  color: var(--color-text);
+}
+
+/* 监听中：红色背景 + 白色图标 + 缩放脉冲动画 */
+.floating-fairy-inline-voice--active {
+  background: var(--color-danger);
+  color: #fff;
+  animation: floating-fairy-voice-pulse 1.5s ease-in-out infinite;
+}
+
+/* 加载中：旋转动画 */
+.floating-fairy-inline-voice--loading {
+  color: var(--color-primary);
+  cursor: wait;
+}
+
+/* 下载百分比文字 */
+.floating-fairy-inline-voice__percent {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.floating-fairy-inline-voice .spin {
+  animation: floating-fairy-voice-spin 1s linear infinite;
+}
+
+@keyframes floating-fairy-voice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes floating-fairy-voice-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
 .floating-fairy-inline-send {
   display: inline-flex;
   width: 26px;
@@ -196,6 +234,7 @@
 
 .floating-fairy-inline-send--stop {
   background: var(--color-danger);
+  grid-column: 3 / 5;
 }
 
 .floating-fairy-inline-send:disabled {

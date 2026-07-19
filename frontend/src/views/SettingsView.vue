@@ -4,6 +4,8 @@ import { customText } from '@/config/customText';
 import AppearanceSection from '@/components/settings/appearance/AppearanceSection.vue';
 import ChatPreferencesSection from '@/components/settings/chat-preferences/ChatPreferencesSection.vue';
 import DesktopBehaviorSection from '@/components/settings/desktop-behavior/DesktopBehaviorSection.vue';
+import FilePathSection from '@/components/settings/file-paths/FilePathSection.vue';
+import LogViewerSection from '@/components/settings/log-viewer/LogViewerSection.vue';
 import SettingsSectionPlaceholder from '@/components/settings/SettingsSectionPlaceholder.vue';
 import SettingsSidebar from '@/components/settings/SettingsSidebar.vue';
 import ModelSourceSection from '@/components/settings/model-source/ModelSourceSection.vue';
@@ -44,6 +46,8 @@ onMounted(() => {
         <AppearanceSection v-else-if="activeSection === 'appearance'" :key="activeSection" />
         <SystemActionsSection v-else-if="activeSection === 'system-actions'" :key="activeSection" />
         <DesktopBehaviorSection v-else-if="activeSection === 'desktop-behavior'" :key="activeSection" />
+        <LogViewerSection v-else-if="activeSection === 'log-viewer'" :key="activeSection" />
+        <FilePathSection v-else-if="activeSection === 'file-paths'" :key="activeSection" />
 
         <div v-else :key="activeSection" class="settings-page__surface">
           <header class="settings-page__header settings-page__header--compact">

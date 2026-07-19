@@ -2,7 +2,8 @@
 import { ChevronDown } from '@lucide/vue';
 import HistoryPullIndicator from '@/components/chat/HistoryPullIndicator.vue';
 import MessageRow from '@/components/chat/MessageRow.vue';
-import { useMessageListController } from '@/components/chat/useMessageListController';
+import { useMessageListController } from '@/components/chat/controllers/useMessageListController';
+import { copyText } from '@/utils/clipboard';
 import { uiText } from '@/config/uiText';
 import type { ChatMessage } from '@/types/chat';
 
@@ -67,7 +68,7 @@ async function copyMessage(content: string) {
   if (!content) {
     return;
   }
-  await navigator.clipboard?.writeText(content);
+  await copyText(content);
 }
 </script>
 

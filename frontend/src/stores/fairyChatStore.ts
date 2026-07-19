@@ -2,13 +2,15 @@ import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import { fairyChatApi } from '@/api/fairyChatApi';
 import { CHAT_EVENT } from '@/config/chatConstants';
+import { useFairyStore } from '@/stores/fairyStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
 import { handleStreamEvent } from '@/stores/workbench/streamState';
 import type { ChatMessage, ChatModelConfig, ChatSession } from '@/types/chat';
 
 const STORAGE_KEY = 'desktop-fairy.temporary-chat';
-const IDLE_TRIGGER_MS = 3 * 60_000;
-const IDLE_COOLDOWN_MS = 3 * 60_000;
+// 自动闲聊触发时间与冷却时间改为从 fairyStore.idleTriggerMs 读取（用户可在设置中调节）
+// 保留默认值用于首次加载（store 未初始化时）
+const DEFAULT_IDLE_TRIGGER_MS = 3 * 60_000;
 const TEMPORARY_SESSION_TTL_MS = 10 * 60_000;
 const TEMPORARY_CHAT_OPTION_ID = '__temporary_chat__';
 const TEMPORARY_CHAT_OPTION_TITLE = '常驻闲聊';
@@ -84,6 +86,7 @@ function loadSnapshot(): TemporaryChatSnapshot {
 
 export const useFairyChatStore = defineStore('fairyChat', () => {
   const modelSourceStore = useModelSourceStore();
+  const fairyStore = useFairyStore();
   const snapshot = loadSnapshot();
 
   const mode = ref<'inactive' | 'temporary-chat'>('inactive');
@@ -94,6 +97,11 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
   const errorMessage = ref('');
   const draft = ref(snapshot.draft);
   const streamController = ref<AbortController | null>(null);
+  // 流式阶段：'idle' | 'typing' | 'thinking' | 'replying'
+  // typing: 用户已发送，等待模型响应
+  // thinking: 模型正在输出思考内容（reasoning）
+  // replying: 模型正在输出正式回复（data）
+  const streamPhase = ref<'idle' | 'typing' | 'thinking' | 'replying'>('idle');
   const lastUserActivityAt = ref(Date.now());
   const lastSessionActivityAt = ref(snapshot.lastSessionActivityAt);
   const lastAutoTriggerAt = ref(0);
@@ -110,7 +118,10 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
   const latestAssistantPreview = computed(() => latestAssistantMessage.value?.content ?? '');
   const activeModelLabel = computed(() => modelSourceStore.selectedChatModelLabel || '未选择聊天模型');
   const canAutoTrigger = computed(
-    () => idleArmed.value && !sending.value && Boolean(modelSourceStore.selectedChatModelConfig) && Date.now() - lastAutoTriggerAt.value >= IDLE_COOLDOWN_MS,
+    () => idleArmed.value
+      && !sending.value
+      && Boolean(modelSourceStore.selectedChatModelConfig)
+      && Date.now() - lastAutoTriggerAt.value >= fairyStore.idleTriggerMs,
   );
   const temporaryChatOption = computed(() => ({
     sessionId: TEMPORARY_CHAT_OPTION_ID,
@@ -318,17 +329,16 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     if (index < 0) {
       return;
     }
-    // 创建副本并应用变更，通过替换整个数组确保 Vue 响应式系统检测到变化
+    // 创建副本并应用变更，确保触发响应式更新
     const current = messages.value[index];
     const next: ChatMessage = {
       ...current,
       timing: current.timing ? { ...current.timing } : {},
     };
     mutator(next);
-    // 使用数组副本替换，确保 computed 和 watch 能正确检测到变化
-    const nextMessages = [...messages.value];
-    nextMessages[index] = next;
-    messages.value = nextMessages;
+    // 直接替换数组中的元素即可触发响应式（Vue 3 Proxy 机制支持索引赋值）
+    // 避免流式更新时每次都拷贝整个数组（O(N) → O(1)）
+    messages.value[index] = next;
   }
 
   async function sendTemporaryMessage(question: string, source: FairyChatTriggerSource = 'manual') {
@@ -347,6 +357,7 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     touchSessionActivity();
     errorMessage.value = '';
     sending.value = true;
+    streamPhase.value = 'typing';
 
     const sessionId = ensureTemporarySession();
     const controller = new AbortController();
@@ -366,11 +377,18 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
           updateAssistantMessageById(assistantMessageId, (message) => {
             handleStreamEvent(event, message, sessionId, () => {}, () => {}, {});
           });
+          if (event.eventType === CHAT_EVENT.reasoning) {
+            // 模型开始输出思考内容
+            streamPhase.value = 'thinking';
+          }
           if (event.eventType === CHAT_EVENT.data) {
+            // 模型开始输出正式回复
+            streamPhase.value = 'replying';
             touchSessionActivity();
             persist();
           }
           if (event.eventType === CHAT_EVENT.stop || event.eventType === CHAT_EVENT.interrupted || event.eventType === CHAT_EVENT.error) {
+            streamPhase.value = 'idle';
             touchSessionActivity();
             persist();
           }
@@ -413,6 +431,7 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
       throw error;
     } finally {
       sending.value = false;
+      streamPhase.value = 'idle';
       streamController.value = null;
       // 发送完成后，确保版本号已同步到 localStorage，再解除同步抑制
       persist();
@@ -438,12 +457,20 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
 
   async function maybeTriggerIdleChat(enabled: boolean) {
     pruneTemporarySessionIfExpired();
-    if (!enabled || mode.value === 'temporary-chat') {
+    // 不再用 mode === 'temporary-chat' 拦截：
+    // 用户可能已经处于临时闲聊会话，但仍希望在持续空闲时继续自动触发下一轮陪伴消息。
+    // 真正应该阻止自动触发的是：
+    //   1. 当前功能未启用
+    //   2. 当前已有一轮请求正在发送中（sending=true）
+    //   3. idleArmed / lastAutoTriggerAt / model 是否可用由 canAutoTrigger 统一控制
+    if (!enabled || sending.value) {
       return false;
     }
 
     const idleFor = Date.now() - lastUserActivityAt.value;
-    if (idleFor < IDLE_TRIGGER_MS) {
+    // 触发时间从 fairyStore.idleTriggerMs 读取（用户可在设置中调节）
+    const idleTriggerMs = fairyStore.idleTriggerMs || DEFAULT_IDLE_TRIGGER_MS;
+    if (idleFor < idleTriggerMs) {
       return false;
     }
 
@@ -488,6 +515,7 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     temporarySessionId,
     messages,
     sending,
+    streamPhase,
     errorMessage,
     draft,
     lastUserActivityAt,

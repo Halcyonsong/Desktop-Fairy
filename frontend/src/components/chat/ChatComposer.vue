@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2 } from '@lucide/vue';
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2 } from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ModelPicker from '@/components/chat/composer/ModelPicker.vue';
 import RuntimeSettingsPopover from '@/components/chat/composer/RuntimeSettingsPopover.vue';
 import { appConfig } from '@/config/appConfig';
 import { uiText } from '@/config/uiText';
+import { useVoskVoiceController } from '@/modules/useVoskVoiceController';
 import type { SelectableModelGroup } from '@/types/chat';
 
 const props = defineProps<{
@@ -35,6 +36,30 @@ const settingsOpen = ref(false);
 const pickerRef = ref<HTMLElement | null>(null);
 const settingsRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+// 语音输入控制器：本地离线识别（vosk-browser）
+const voiceInput = useVoskVoiceController({
+  onFinalResult: (transcript) => {
+    const current = props.draft;
+    const separator = current && !current.endsWith(' ') && !current.endsWith('\n') ? '' : '';
+    emit('update:draft', current + separator + transcript);
+  },
+  onError: (error, message) => {
+    if (error !== 'no-speech' && error !== 'aborted') {
+      console.warn('[voiceInput]', message);
+    }
+  },
+});
+
+const voiceButtonTitle = computed(() => {
+  if (!voiceInput.isSupported.value) {
+    return '当前浏览器不支持语音输入';
+  }
+  if (voiceInput.isLoading.value) {
+    return voiceInput.loadingMessage.value || '正在准备语音识别...';
+  }
+  return voiceInput.isListening.value ? '点击停止语音输入' : '点击开始语音输入（首次使用需下载模型）';
+});
 
 function submit() {
   const value = props.draft.trim();
@@ -161,6 +186,25 @@ watch(
         <div class="composer-tools-right">
           <button class="composer-tool-button" type="button" :title="uiText.composer.rollback" :disabled="sending" @click="emit('rollback')">
             <Undo2 :size="18" />
+          </button>
+          <!-- 语音输入按钮：放在发送键左边 -->
+          <button
+            v-if="voiceInput.isSupported.value"
+            class="composer-tool-button composer-voice-button"
+            :class="{
+              'composer-voice-button--active': voiceInput.isListening.value,
+              'composer-voice-button--loading': voiceInput.isLoading.value,
+            }"
+            type="button"
+            :title="voiceButtonTitle"
+            :disabled="sending || voiceInput.isLoading.value"
+            @click="voiceInput.toggle()"
+          >
+            <span v-if="voiceInput.isLoading.value && voiceInput.downloadProgress.value" class="composer-voice-button__percent">
+              {{ voiceInput.downloadProgress.value.percent }}%
+            </span>
+            <LoaderCircle v-else-if="voiceInput.isLoading.value" :size="18" class="spin" />
+            <Mic v-else :size="18" />
           </button>
           <button v-if="sending" class="send-button" type="button" :title="uiText.composer.stop" @click="emit('stop')">
             <Square :size="19" />

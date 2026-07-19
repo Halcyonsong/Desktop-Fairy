@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { onBeforeUnmount, ref } from 'vue';
 
 type FairyStoreLike = {
   position: { x: number; y: number } | null;
@@ -10,6 +10,7 @@ interface DragControllerOptions {
   fairyStore: FairyStoreLike;
   hideOverlay: () => void;
   onDragStateChange: (dragging: boolean) => void;
+  onDragMove?: (deltaX: number) => void;
   onDragCommitted?: () => void;
   useNativeWindowDrag?: boolean | (() => boolean);
 }
@@ -18,11 +19,23 @@ export function useFairyDragController({
   fairyStore,
   hideOverlay,
   onDragStateChange,
+  onDragMove,
   onDragCommitted,
   useNativeWindowDrag = false,
 }: DragControllerOptions) {
   const shellRef = ref<HTMLElement | null>(null);
   const suppressClick = ref(false);
+
+  // 保存拖拽期间的清理函数，用于组件卸载时强制清理全局监听器
+  // 避免用户在拖拽过程中关闭精灵开关导致 4 个全局监听器永久泄漏
+  let activeCleanup: (() => void) | null = null;
+
+  onBeforeUnmount(() => {
+    if (activeCleanup) {
+      activeCleanup();
+      activeCleanup = null;
+    }
+  });
 
   function shouldUseNativeWindowDrag() {
     return typeof useNativeWindowDrag === 'function' ? useNativeWindowDrag() : useNativeWindowDrag;
@@ -121,6 +134,8 @@ export function useFairyDragController({
           // native drag 模式下，移除 pointermove 监听器，窗口移动完全由主进程轮询接管
           // 避免窗口 setPosition 产生的额外 pointermove 事件干扰（buttons 异常、坐标不一致等）
           window.removeEventListener('pointermove', handlePointerMove, true);
+          // 但保留一个 mousemove 监听用于跟踪拖动方向（仅用于切换精灵动作，不操作位置）
+          window.addEventListener('mousemove', handleNativeDragDirection, true);
           return;
         }
       }
@@ -139,10 +154,24 @@ export function useFairyDragController({
       );
 
       fairyStore.setPosition(nextPosition);
+
+      // 通知拖动方向（用于切换精灵动作）
+      if (deltaX !== 0) {
+        onDragMove?.(deltaX);
+      }
+    };
+
+    // native drag 模式下用于跟踪拖动方向的监听器
+    const handleNativeDragDirection = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.screenX - startScreenX;
+      if (deltaX !== 0) {
+        onDragMove?.(deltaX);
+      }
     };
 
     const handlePointerEnd = () => {
       window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('mousemove', handleNativeDragDirection, true);
       window.removeEventListener('pointerup', handlePointerEnd, true);
       window.removeEventListener('pointercancel', handlePointerEnd, true);
       window.removeEventListener('blur', handlePointerEnd);
@@ -155,6 +184,9 @@ export function useFairyDragController({
         // 释放 pointer capture 失败不影响拖拽结束
       }
 
+      // 拖拽正常结束，清空 cleanup 引用，避免 onBeforeUnmount 重复清理
+      activeCleanup = null;
+
       finishDrag();
     };
 
@@ -162,6 +194,28 @@ export function useFairyDragController({
     window.addEventListener('pointerup', handlePointerEnd, true);
     window.addEventListener('pointercancel', handlePointerEnd, true);
     window.addEventListener('blur', handlePointerEnd);
+
+    // 注册 cleanup，用于组件卸载时强制清理 4 个全局监听器
+    // 不直接复用 handlePointerEnd 是为了避免重复触发 finishDrag（onDragStateChange 等）
+    // 这里只移除监听器，状态收尾交给 finishDrag 在 pointerup 时处理
+    activeCleanup = () => {
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('mousemove', handleNativeDragDirection, true);
+      window.removeEventListener('pointerup', handlePointerEnd, true);
+      window.removeEventListener('pointercancel', handlePointerEnd, true);
+      window.removeEventListener('blur', handlePointerEnd);
+
+      try {
+        if (target.hasPointerCapture?.(event.pointerId)) {
+          target.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // 忽略
+      }
+
+      // 组件卸载时也要通知拖拽状态结束，避免上层状态卡在 dragging=true
+      onDragStateChange(false);
+    };
   }
 
   function shouldSuppressClick() {

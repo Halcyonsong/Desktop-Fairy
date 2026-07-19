@@ -1,0 +1,85 @@
+{
+  "id": "kurisu-coder",
+  "displayName": "Kurisu Coder",
+  "description": "Grid-based test manifest for the Kurisu coder sprite sheet.",
+  "spritesheetPath": "spritesheet.webp",
+  "schemaVersion": 1,
+  "defaultAnimation": "idle",
+  "sheet": {
+    "width": 1536,
+    "height": 1872,
+    "columns": 8,
+    "rows": 9,
+    "cellWidth": 192,
+    "cellHeight": 208
+  },
+  "anchor": {
+    "x": 96,
+    "y": 184
+  },
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frameCount": 6,
+      "fps": 1,
+      "loop": true,
+      "playOrder": "left-to-right"
+    },
+    "dragRight": {
+      "row": 1,
+      "frameCount": 8,
+      "fps": 10,
+      "loop": true,
+      "playOrder": "left-to-right"
+    },
+    "dragLeft": {
+      "row": 2,
+      "frameCount": 8,
+      "fps": 10,
+      "loop": true,
+      "playOrder": "left-to-right"
+    },
+    "greet": {
+      "row": 3,
+      "frameCount": 4,
+      "fps": 7,
+      "loop": false,
+      "playOrder": "left-to-right"
+    },
+    "hover": {
+      "row": 4,
+      "frameCount": 5,
+      "fps": 8,
+      "loop": false,
+      "playOrder": "left-to-right"
+    },
+    "requestFailed": {
+      "row": 5,
+      "frameCount": 8,
+      "fps": 8,
+      "loop": false,
+      "playOrder": "left-to-right"
+    },
+    "thinking": {
+      "row": 6,
+      "frameCount": 6,
+      "fps": 6,
+      "loop": true,
+      "playOrder": "left-to-right"
+    },
+    "typing": {
+      "row": 7,
+      "frameCount": 6,
+      "fps": 8,
+      "loop": true,
+      "playOrder": "left-to-right"
+    },
+    "replying": {
+      "row": 8,
+      "frameCount": 6,
+      "fps": 7,
+      "loop": true,
+      "playOrder": "left-to-right"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, session } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +21,7 @@ let fairyWindow = null;
 let tray = null;
 let isQuitting = false;
 let fairyWindowEnabled = false;
+let mainWindowHiddenToTray = false;
 
 // 桌面精灵拖动控制器，在 createFairyWindow 后初始化
 let fairyDragController = null;
@@ -308,6 +309,7 @@ function showMainWindow() {
     mainWindow.restore();
   }
 
+  mainWindowHiddenToTray = false;
   mainWindow.show();
   mainWindow.focus();
 }
@@ -317,11 +319,12 @@ function hideMainWindow() {
     return;
   }
 
+  mainWindowHiddenToTray = true;
   mainWindow.hide();
 }
 
 function toggleMainWindow() {
-  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindowHiddenToTray) {
     showMainWindow();
     return;
   }
@@ -380,13 +383,27 @@ function createTray() {
   const refreshMenu = () => {
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? '隐藏工作台' : '打开工作台',
+        label: mainWindow && !mainWindow.isDestroyed() && !mainWindowHiddenToTray ? '隐藏工作台' : '显示工作台',
         click: () => toggleMainWindow(),
       },
       {
-        label: fairyWindowEnabled ? '显示桌面精灵' : '桌面精灵已关闭',
-        enabled: fairyWindowEnabled,
-        click: () => showFairyWindow(),
+        label: fairyWindowEnabled ? '关闭精灵（同时关闭自动闲聊）' : '显示精灵',
+        click: () => {
+          if (fairyWindowEnabled) {
+            fairyWindowEnabled = false;
+            persistFairyPreferences();
+            hideFairyWindow();
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('fairy:force-disable-resident-chat');
+            }
+          } else {
+            applyFairyWindowEnabled(true);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('fairy:enable-from-tray');
+            }
+          }
+          refreshMenu();
+        },
       },
       { type: 'separator' },
       {
@@ -541,11 +558,142 @@ function registerIpc() {
   ipcMain.on('fairy:set-mouse-ignore', (event, ignore) => fairyDragController?.setMouseIgnore(event, ignore));
   ipcMain.on('fairy:set-dragging', (event, dragging) => fairyDragController?.setDragging(event, dragging));
   ipcMain.on('fairy:set-enabled', setFairyEnabled);
+
+  // ===== 系统：文件路径与日志读取 =====
+  // 返回所有应用数据存储路径，供设置页"文件路径"栏目展示
+  ipcMain.handle('system:get-file-paths', () => {
+    const home = app.getPath('home');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    return {
+      home,
+      localAppData,
+      userData: app.getPath('userData'),
+      paths: [
+        {
+          key: 'database',
+          label: '主数据库',
+          path: path.join(localAppData, 'DesktopFairy', 'data', 'fairy.db'),
+          description: '存储会话、消息、设置等核心数据（SQLite）',
+        },
+        {
+          key: 'backendLog',
+          label: '后端日志',
+          path: path.join(localAppData, 'DesktopFairy', 'logs', 'desktop-fairy.log'),
+          description: 'Spring Boot 后端运行日志',
+        },
+        {
+          key: 'frontendLog',
+          label: '前端日志',
+          path: '(浏览器 IndexedDB: vosk-models)',
+          description: '前端运行日志，保存在浏览器内存中，最多 2000 条',
+        },
+        {
+          key: 'voskModel',
+          label: '语音识别模型缓存',
+          path: '(浏览器 IndexedDB: vosk-models)',
+          description: 'Vosk 中文小模型 tar.gz 包，从 ModelScope 下载后缓存',
+        },
+        {
+          key: 'fairyWindowState',
+          label: '精灵窗口状态',
+          path: path.join(app.getPath('userData'), 'fairy-window-state.json'),
+          description: '桌面精灵窗口位置、大小等状态',
+        },
+        {
+          key: 'fairyPreferences',
+          label: '精灵偏好设置',
+          path: path.join(app.getPath('userData'), 'fairy-preferences.json'),
+          description: '桌面精灵启用状态等偏好',
+        },
+        {
+          key: 'electronUserData',
+          label: 'Electron 用户数据',
+          path: app.getPath('userData'),
+          description: 'Electron 应用数据目录（缓存、配置等）',
+        },
+      ],
+    };
+  });
+
+  // 读取后端日志文件尾部 N 行
+  ipcMain.handle('system:read-backend-log', (event, lines) => {
+    const home = app.getPath('home');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    const logPath = path.join(localAppData, 'DesktopFairy', 'logs', 'desktop-fairy.log');
+    const maxLines = Math.min(Math.max(lines || 500, 50), 5000);
+
+    try {
+      if (!fs.existsSync(logPath)) {
+        return {
+          path: logPath,
+          content: '',
+          exists: false,
+          message: '日志文件不存在',
+        };
+      }
+
+      const stats = fs.statSync(logPath);
+      const fileSize = stats.size;
+      // 最多读取最后 2MB，避免大文件读取
+      const readSize = Math.min(fileSize, 2 * 1024 * 1024);
+      const buffer = Buffer.alloc(readSize);
+
+      const fd = fs.openSync(logPath, 'r');
+      fs.readSync(fd, buffer, 0, readSize, fileSize - readSize);
+      fs.closeSync(fd);
+
+      let content = buffer.toString('utf8');
+      // 如果不是从文件开头读取，丢弃第一行（可能不完整）
+      if (readSize < fileSize) {
+        const firstNewline = content.indexOf('\n');
+        if (firstNewline >= 0) {
+          content = content.slice(firstNewline + 1);
+        }
+      }
+
+      // 只保留最后 N 行
+      const allLines = content.split('\n');
+      const tailLines = allLines.slice(-maxLines).join('\n');
+
+      return {
+        path: logPath,
+        content: tailLines,
+        exists: true,
+        fileSize,
+        lines: allLines.length,
+      };
+    } catch (err) {
+      return {
+        path: logPath,
+        content: '',
+        exists: false,
+        message: `读取失败: ${err.message}`,
+      };
+    }
+  });
 }
 
 async function bootstrap() {
   try {
-    fairyWindowEnabled = readFairyPreferences().enabled;
+    // 设置权限处理器：允许麦克风权限（用于 Web Speech API 语音输入）
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      if (permission === 'media') {
+        callback(true);
+      } else {
+        callback(true);
+      }
+    });
+
+    // 允许 media 权限检查
+    session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+      if (permission === 'media') {
+        return true;
+      }
+      return true;
+    });
+
+    const preferences = readFairyPreferences();
+    fairyWindowEnabled = preferences.enabled;
     registerIpc();
     await startBackend();
     createWindows();

@@ -1,10 +1,40 @@
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { useAppearanceStore } from '@/stores/appearanceStore';
 import { useFairyStore } from '@/stores/fairyStore';
 import { useWindowModeStore, type WindowMode } from '@/stores/windowModeStore';
+import { installConsoleInterceptor } from '@/modules/installConsoleInterceptor';
 import './styles/global.css';
+
+/**
+ * 动态注入 Source Han Serif CN 子集字体的 @font-face 规则。
+ *
+ * 字体文件位于 public/fonts/SourceHanSerifCN-Regular.subset.woff2，作为静态资源
+ * 不参与 Vite 打包，便于后续继续调整子集范围或替换为新的字体版本。
+ *
+ * 不在 CSS 中直接写 url() 的原因：
+ *   - Vite base 配置为 './'，且 Electron 生产环境通过 loadFile (file:// 协议)
+ *     加载 dist/index.html。CSS 中绝对路径 '/fonts/...' 在 file:// 下会被
+ *     解析为 file:///fonts/... (磁盘根)，加载失败。
+ *   - 用 new URL(path, window.location.href) 可同时兼容 dev server
+ *     (http://localhost:xxxx) 和 Electron file:// 协议。该模式参考
+ *     src/modules/fairy/petLoader.ts 的实现。
+ */
+function injectSerifFontFace() {
+  const fontUrl = new URL('fonts/SourceHanSerifCN-Regular.subset.woff2', window.location.href).href;
+  const style = document.createElement('style');
+  style.textContent = [
+    '@font-face {',
+    "  font-family: 'Source Han Serif CN';",
+    `  src: url('${fontUrl}') format('woff2');`,
+    '  font-style: normal;',
+    '  font-weight: 400;',
+    '  font-display: swap;',
+    '}',
+  ].join('\n');
+  document.head.appendChild(style);
+}
 
 declare global {
   interface Window {
@@ -18,8 +48,33 @@ declare global {
       setFairyMouseIgnore?: (ignore: boolean) => void;
       setFairyDragging?: (dragging: boolean) => void;
       setFairyEnabled?: (enabled: boolean) => void;
+      onForceDisableResidentChat?: (callback: () => void) => void;
+      onEnableFairyFromTray?: (callback: () => void) => void;
+      getFilePaths?: () => Promise<FilePathsResult>;
+      readBackendLog?: (lines: number) => Promise<BackendLogResult>;
     };
   }
+}
+
+export interface FilePathsResult {
+  home: string;
+  localAppData: string;
+  userData: string;
+  paths: Array<{
+    key: string;
+    label: string;
+    path: string;
+    description: string;
+  }>;
+}
+
+export interface BackendLogResult {
+  path: string;
+  content: string;
+  exists: boolean;
+  message?: string;
+  fileSize?: number;
+  lines?: number;
 }
 
 function resolveWindowModeFromLocation(): WindowMode | null {
@@ -55,10 +110,16 @@ async function preloadFairyNativePreferences(fairyStore: ReturnType<typeof useFa
 }
 
 async function bootstrap() {
+  injectSerifFontFace();
   const app = createApp(App);
   const pinia = createPinia();
 
   app.use(pinia);
+  // 设置 activePinia，让组件外部（如 console 拦截器）能调用 useLoggerStore()
+  setActivePinia(pinia);
+
+  // 安装 console 拦截器（捕获所有日志到 loggerStore）
+  installConsoleInterceptor();
 
   const appearanceStore = useAppearanceStore();
   const fairyStore = useFairyStore();
@@ -70,6 +131,13 @@ async function bootstrap() {
   appearanceStore.initializeSync();
   fairyStore.initializeSync();
   fairyStore.syncNativeWindowState();
+  window.desktopFairy?.onForceDisableResidentChat?.(() => {
+    fairyStore.setResidentChatEnabled(false);
+    fairyStore.setEnabled(false);
+  });
+  window.desktopFairy?.onEnableFairyFromTray?.(() => {
+    fairyStore.setEnabled(true);
+  });
   windowModeStore.setWindowMode(await resolveInitialWindowMode());
 
   app.mount('#app');

@@ -53,20 +53,24 @@ export async function loadWorkbenchSession(
   state.errorMessage.value = '';
   state.historyPullMessage.value = uiText.chat.pullMore;
 
-  const historyPage = await chatApi.listHistory(sessionId);
-  applyHistoryPage(
-    state,
-    reasoning,
-    reasoning.setReasoningMessageId,
-    sessionId,
-    historyPage.records,
-    historyPage.nextCursor,
-    historyPage.hasMore,
-    historyPage.total,
-  );
+  try {
+    const historyPage = await chatApi.listHistory(sessionId);
+    applyHistoryPage(
+      state,
+      reasoning,
+      reasoning.setReasoningMessageId,
+      sessionId,
+      historyPage.records,
+      historyPage.nextCursor,
+      historyPage.hasMore,
+      historyPage.total,
+    );
 
-  if (!historyPage.hasMore) {
-    state.noMoreHistoryUntil.value = cacheNoMoreHistory(state.noMoreHistoryUntil.value, sessionId);
+    if (!historyPage.hasMore) {
+      state.noMoreHistoryUntil.value = cacheNoMoreHistory(state.noMoreHistoryUntil.value, sessionId);
+    }
+  } catch (error) {
+    state.errorMessage.value = error instanceof Error ? error.message : uiText.errors.requestFailed;
   }
 }
 
@@ -97,10 +101,14 @@ export async function createWorkbenchSession(
   state: WorkbenchStateRefs,
   loadSession: (sessionId: string) => Promise<void>,
 ) {
-  const session = await chatApi.createSession();
-  state.sessions.value = [session, ...state.sessions.value.filter((item) => item.sessionId !== session.sessionId)];
-  state.composerDraft.value = '';
-  await loadSession(session.sessionId);
+  try {
+    const session = await chatApi.createSession();
+    state.sessions.value = [session, ...state.sessions.value.filter((item) => item.sessionId !== session.sessionId)];
+    state.composerDraft.value = '';
+    await loadSession(session.sessionId);
+  } catch (error) {
+    state.errorMessage.value = error instanceof Error ? error.message : uiText.errors.requestFailed;
+  }
 }
 
 export async function renameWorkbenchSession(state: WorkbenchStateRefs, sessionId: string, title: string) {
@@ -108,8 +116,12 @@ export async function renameWorkbenchSession(state: WorkbenchStateRefs, sessionI
     return;
   }
 
-  const session = await chatApi.renameSession(sessionId, title.trim());
-  state.sessions.value = state.sessions.value.map((item) => (item.sessionId === session.sessionId ? session : item));
+  try {
+    const session = await chatApi.renameSession(sessionId, title.trim());
+    state.sessions.value = state.sessions.value.map((item) => (item.sessionId === session.sessionId ? session : item));
+  } catch (error) {
+    state.errorMessage.value = error instanceof Error ? error.message : uiText.errors.requestFailed;
+  }
 }
 
 export async function deleteWorkbenchSession(
@@ -122,22 +134,26 @@ export async function deleteWorkbenchSession(
     return;
   }
 
-  await chatApi.deleteSession(sessionId);
-  state.sessions.value = state.sessions.value.filter((session) => session.sessionId !== sessionId);
-  reasoning.clearReasoning(sessionId);
-  const { [sessionId]: ignored, ...nextNoMoreHistory } = state.noMoreHistoryUntil.value;
-  state.noMoreHistoryUntil.value = nextNoMoreHistory;
+  try {
+    await chatApi.deleteSession(sessionId);
+    state.sessions.value = state.sessions.value.filter((session) => session.sessionId !== sessionId);
+    reasoning.clearReasoning(sessionId);
+    const { [sessionId]: ignored, ...nextNoMoreHistory } = state.noMoreHistoryUntil.value;
+    state.noMoreHistoryUntil.value = nextNoMoreHistory;
 
-  if (state.activeSessionId.value !== sessionId) {
-    return;
-  }
+    if (state.activeSessionId.value !== sessionId) {
+      return;
+    }
 
-  state.messages.value = [];
-  state.activeSessionId.value = '';
-  state.composerDraft.value = '';
+    state.messages.value = [];
+    state.activeSessionId.value = '';
+    state.composerDraft.value = '';
 
-  if (state.sessions.value[0]) {
-    await loadSession(state.sessions.value[0].sessionId);
+    if (state.sessions.value[0]) {
+      await loadSession(state.sessions.value[0].sessionId);
+    }
+  } catch (error) {
+    state.errorMessage.value = error instanceof Error ? error.message : uiText.errors.requestFailed;
   }
 }
 
@@ -226,7 +242,12 @@ export async function stopWorkbenchChat(state: WorkbenchStateRefs) {
     return;
   }
 
-  await chatApi.stopChat(state.activeSessionId.value);
+  try {
+    await chatApi.stopChat(state.activeSessionId.value);
+  } catch (error) {
+    // 停止接口失败不应阻塞 UI，仍要 abort 前端流，仅记录错误日志
+    console.warn('[workbench] stopChat failed:', error);
+  }
   state.streamController.value?.abort();
 }
 
@@ -242,18 +263,23 @@ export async function deleteLatestWorkbenchRound(
 
   const sessionId = state.activeSessionId.value;
   const lastUserMessage = findLastUserMessage(state.messages.value);
-  const page = await chatApi.rollback(sessionId);
-  applyHistoryPage(
-    state,
-    reasoning,
-    reasoning.setReasoningMessageId,
-    sessionId,
-    page.records,
-    page.nextCursor,
-    page.hasMore,
-    page.total,
-  );
-  state.composerDraft.value = fillComposer ? lastUserMessage?.content ?? '' : '';
-  reasoning.clearReasoning(sessionId);
-  await refreshSessions();
+
+  try {
+    const page = await chatApi.rollback(sessionId);
+    applyHistoryPage(
+      state,
+      reasoning,
+      reasoning.setReasoningMessageId,
+      sessionId,
+      page.records,
+      page.nextCursor,
+      page.hasMore,
+      page.total,
+    );
+    state.composerDraft.value = fillComposer ? lastUserMessage?.content ?? '' : '';
+    reasoning.clearReasoning(sessionId);
+    await refreshSessions();
+  } catch (error) {
+    state.errorMessage.value = error instanceof Error ? error.message : uiText.errors.requestFailed;
+  }
 }
