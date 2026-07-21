@@ -10,7 +10,9 @@ public enum ChatEventTypeEnum {
     REASONING(1002, "思考事件"),
     STOP(1003, "停止事件"),
     INTERRUPTED(1004, "中断事件"),
-    ERROR(1005, "错误事件");
+    ERROR(1005, "错误事件"),
+    TOOL_STATUS(1006, "工具状态事件"),
+    TOOL_RESULT(1007, "工具结果事件");
 
     private final int value;
     private final String desc;

@@ -38,7 +38,7 @@ const renameValue = ref('');
 const renameInputRef = ref<HTMLInputElement | null>(null);
 const deleteModalOpen = ref(false);
 const deleteTarget = ref<SidebarSessionItem | null>(null);
-const helpPopoverOpen = ref(false);
+const helpDialogOpen = ref(false);
 
 const filteredSessions = computed(() => {
   const value = keyword.value.trim().toLowerCase();
@@ -110,8 +110,8 @@ function refreshTemporarySession(event: MouseEvent) {
   emit('refreshTemporarySession');
 }
 
-function toggleHelpPopover() {
-  helpPopoverOpen.value = !helpPopoverOpen.value;
+function toggleHelpDialog() {
+  helpDialogOpen.value = !helpDialogOpen.value;
 }
 </script>
 
@@ -148,7 +148,7 @@ function toggleHelpPopover() {
           <span class="session-item__title-row">
             <span class="session-item__title">{{ session.title }}</span>
             <span v-if="session.temporary" class="session-item__badge">
-              <Sparkles :size="11" />临时
+              <Sparkles :size="11" />{{ customText.session.temporaryTag }}
             </span>
           </span>
           <span v-if="session.summary" class="session-item__summary" :title="session.summary">{{ session.summary }}</span>
@@ -156,7 +156,7 @@ function toggleHelpPopover() {
         </button>
 
         <div v-if="session.temporary" class="session-item__menu-wrap">
-          <button class="session-menu-button" type="button" title="刷新临时会话" @click="refreshTemporarySession($event)">
+          <button class="session-menu-button" type="button" :title="customText.session.refreshTemporaryTitle" @click="refreshTemporarySession($event)">
             <RefreshCw :size="16" />
           </button>
         </div>
@@ -185,13 +185,13 @@ function toggleHelpPopover() {
           <Settings2 :size="18" />
         </button>
 
-        <button class="session-sidebar__nav-button session-sidebar__help-button" type="button" title="使用说明" @click="toggleHelpPopover">
+        <button class="session-sidebar__nav-button session-sidebar__help-button" type="button" :title="customText.session.helpTitle" @click="toggleHelpDialog">
           <CircleHelp :size="18" />
         </button>
       </div>
     </div>
 
-    <SessionHelpDialog :open="helpPopoverOpen" @close="helpPopoverOpen = false" />
+    <SessionHelpDialog :open="helpDialogOpen" @close="helpDialogOpen = false" />
 
     <Transition name="modal-fade">
       <div v-if="renameModalOpen" class="session-modal-overlay" @click.self="cancelRename">
@@ -206,8 +206,8 @@ function toggleHelpPopover() {
             @keydown.escape="cancelRename"
           />
           <div class="session-modal__actions">
-            <button type="button" class="session-modal__button session-modal__button--ghost" @click="cancelRename">取消</button>
-            <button type="button" class="session-modal__button session-modal__button--primary" @click="confirmRename">确定</button>
+            <button type="button" class="session-modal__button session-modal__button--ghost" @click="cancelRename">{{ customText.session.modalCancel }}</button>
+            <button type="button" class="session-modal__button session-modal__button--primary" @click="confirmRename">{{ customText.session.modalConfirm }}</button>
           </div>
         </div>
       </div>
@@ -216,11 +216,11 @@ function toggleHelpPopover() {
     <Transition name="modal-fade">
       <div v-if="deleteModalOpen" class="session-modal-overlay" @click.self="cancelDelete">
         <div class="session-modal" role="dialog" aria-modal="true">
-          <h3 class="session-modal__title">删除会话</h3>
+          <h3 class="session-modal__title">{{ customText.session.deleteTitle }}</h3>
           <p class="session-modal__message">{{ deleteTarget ? uiText.session.deleteConfirm(deleteTarget.title) : '' }}</p>
           <div class="session-modal__actions">
-            <button type="button" class="session-modal__button session-modal__button--ghost" @click="cancelDelete">取消</button>
-            <button type="button" class="session-modal__button session-modal__button--danger" @click="confirmDelete">删除</button>
+            <button type="button" class="session-modal__button session-modal__button--ghost" @click="cancelDelete">{{ customText.session.modalCancel }}</button>
+            <button type="button" class="session-modal__button session-modal__button--danger" @click="confirmDelete">{{ uiText.session.delete }}</button>
           </div>
         </div>
       </div>

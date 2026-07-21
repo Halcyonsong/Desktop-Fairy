@@ -1,6 +1,6 @@
 export type ChatRole = 'user' | 'assistant';
 export type ChatMessageStatus = 'completed' | 'interrupted' | 'error' | 'sending' | 'streaming';
-export type ChatEventType = 1001 | 1002 | 1003 | 1004 | 1005;
+export type ChatEventType = 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007;
 export type ModelProvider = string;
 
 export interface ChatSession {
@@ -17,6 +17,41 @@ export interface ChatMessageTiming {
   completedAt?: number;
 }
 
+// 1006 TOOL_STATUS / 1007 TOOL_RESULT 的 eventData 结构
+export interface ToolStatusEvent {
+  round: number;
+  stage: string;
+  message: string;
+}
+
+export type ChatDirectiveMarker = '@Continue@' | '@Finish@' | '@Missing@';
+
+// 消息块类型：按事件实际到达顺序排列
+// reasoning 和 content 交替出现，每个 reasoning 块独立控制展开
+export type ChatMessageBlockType = 'reasoning' | 'content' | 'tool';
+
+export interface ChatMessageBlock {
+  id: string;
+  type: ChatMessageBlockType;
+  round: number;
+  // reasoning: 思考内容（展示用，已裁标记）
+  // content: 正文内容（展示用，已裁标记）
+  // tool: 工具状态说明文案
+  text: string;
+  // tool 块的附加信息
+  toolStatus?: ToolStatusEvent;
+}
+
+// 保留旧类型用于兼容过渡
+export interface ChatRoundSegment {
+  round: number;
+  reasoning: string;
+  contentRaw: string;
+  contentDisplay: string;
+  directive?: ChatDirectiveMarker;
+  toolStatuses: ToolStatusEvent[];
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -24,6 +59,12 @@ export interface ChatMessage {
   status: ChatMessageStatus;
   createTime: string;
   timing?: ChatMessageTiming;
+  // 工具调用轮次状态/结果
+  toolStatuses?: ToolStatusEvent[];
+  // 按事件顺序排列的消息块（reasoning / content / tool 交替）
+  blocks?: ChatMessageBlock[];
+  // @deprecated 旧字段，保留兼容
+  segments?: ChatRoundSegment[];
 }
 
 export interface ChatHistoryPage {
@@ -157,4 +198,5 @@ export interface SendChatOptions {
   model?: ChatModelConfig | null;
   onEvent: (event: ChatEvent) => void;
   signal?: AbortSignal;
+  enableToolCalling?: boolean;
 }

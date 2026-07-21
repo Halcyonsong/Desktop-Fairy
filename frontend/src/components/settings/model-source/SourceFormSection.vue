@@ -41,11 +41,11 @@ const emit = defineEmits<{
 
     <div class="settings-form-grid">
       <label class="settings-field">
-        <span>名称</span>
+        <span>{{ customText.modelSource.nameLabel }}</span>
         <div class="settings-input-shell settings-input-shell--single-action">
-          <input v-model="form.name" type="text" placeholder="DeepSeek 主账号" />
+          <input v-model="form.name" type="text" :placeholder="customText.modelSource.namePlaceholder" />
           <div v-if="form.name" class="settings-input-actions">
-            <button class="settings-input-action" type="button" title="清空名称" @click="clearField('name')">
+            <button class="settings-input-action" type="button" :title="customText.modelSource.clearNameTitle" @click="clearField('name')">
               <X :size="15" />
             </button>
           </div>
@@ -53,12 +53,12 @@ const emit = defineEmits<{
       </label>
 
       <label class="settings-field">
-        <span>Provider</span>
+        <span>{{ customText.modelSource.providerLabel }}</span>
         <div ref="providerRef" class="settings-select-shell">
           <div class="settings-input-shell settings-input-shell--single-action">
             <input v-model="form.provider" type="text" :placeholder="customText.modelSource.providerPlaceholder" @focus="providerOpen = true" />
             <div class="settings-input-actions">
-              <button class="settings-input-action" type="button" title="展开 Provider" @click="toggleProviderOpen">
+              <button class="settings-input-action" type="button" :title="customText.modelSource.expandProviderTitle" @click="toggleProviderOpen">
                 <ChevronDown :size="16" :class="{ 'settings-select-shell__chevron--open': providerOpen }" />
               </button>
             </div>
@@ -86,14 +86,14 @@ const emit = defineEmits<{
       </label>
 
       <label class="settings-field settings-field--full">
-        <span>Base URL</span>
+        <span>{{ customText.modelSource.baseUrlLabel }}</span>
         <div class="settings-input-shell settings-input-shell--double-action">
-          <input v-model="form.baseUrl" type="text" placeholder="https://api.deepseek.com" />
+          <input v-model="form.baseUrl" type="text" :placeholder="customText.modelSource.baseUrlPlaceholder" />
           <div v-if="form.baseUrl" class="settings-input-actions">
-            <button class="settings-input-action" type="button" :title="copiedField === 'baseUrl' ? '已复制！' : '复制 Base URL'" @click="copyValue(form.baseUrl, 'baseUrl')">
+            <button class="settings-input-action" type="button" :title="copiedField === 'baseUrl' ? customText.modelSource.copiedTitle : customText.modelSource.copyBaseUrlTitle" @click="copyValue(form.baseUrl, 'baseUrl')">
               <Copy :size="15" />
             </button>
-            <button class="settings-input-action" type="button" title="清空 Base URL" @click="clearField('baseUrl')">
+            <button class="settings-input-action" type="button" :title="customText.modelSource.clearBaseUrlTitle" @click="clearField('baseUrl')">
               <X :size="15" />
             </button>
           </div>
@@ -101,19 +101,19 @@ const emit = defineEmits<{
       </label>
 
       <label class="settings-field settings-field--full">
-        <span>API Key</span>
+        <span>{{ customText.modelSource.apiKeyLabel }}</span>
         <div class="settings-input-shell settings-input-shell--triple-action">
           <input
             v-model="form.apiKey"
             :type="apiKeyVisible ? 'text' : 'password'"
-            placeholder="sk-xxxx"
+            :placeholder="customText.modelSource.apiKeyPlaceholder"
             @blur="hideApiKey"
           />
           <div class="settings-input-actions">
             <button
               class="settings-input-action"
               type="button"
-              :title="apiKeyVisible ? '隐藏 API Key' : '显示 API Key'"
+              :title="apiKeyVisible ? customText.modelSource.hideApiKeyTitle : customText.modelSource.showApiKeyTitle"
               @click="toggleApiKeyVisible"
             >
               <EyeOff v-if="apiKeyVisible" :size="16" />
@@ -123,7 +123,7 @@ const emit = defineEmits<{
               v-if="form.apiKey"
               class="settings-input-action"
               type="button"
-              :title="copiedField === 'apiKey' ? '已复制！' : '复制 API Key'"
+              :title="copiedField === 'apiKey' ? customText.modelSource.copiedTitle : customText.modelSource.copyApiKeyTitle"
               @click="copyValue(form.apiKey, 'apiKey')"
             >
               <Copy :size="15" />
@@ -132,7 +132,7 @@ const emit = defineEmits<{
               v-if="form.apiKey"
               class="settings-input-action"
               type="button"
-              title="清空 API Key"
+              :title="customText.modelSource.clearApiKeyTitle"
               @click="clearField('apiKey')"
             >
               <X :size="15" />
@@ -143,9 +143,9 @@ const emit = defineEmits<{
     </div>
 
     <div class="settings-panel__actions settings-panel__actions--block settings-panel__actions--end">
-      <button class="settings-page__primary settings-page__primary--icon" type="button" :disabled="!canSubmit || saving" title="保存" @click="emit('save')">
+      <button class="settings-page__primary settings-page__primary--icon" type="button" :disabled="!canSubmit || saving" :title="customText.modelSource.saveTitle" @click="emit('save')">
         <Save :size="16" />
-        <span>{{ saving ? '保存中' : '保存' }}</span>
+        <span>{{ saving ? customText.modelSource.savingTitle : customText.modelSource.saveTitle }}</span>
       </button>
     </div>
   </section>

@@ -2,39 +2,18 @@
 import { ChevronLeft, Download, FileText, Play, Plus, RefreshCw, SquareTerminal } from '@lucide/vue';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { customText } from '@/config/customText';
+import { modelProviderOptions } from '@/config/modelProviders';
 import DraftModelsSection from '@/components/settings/model-source/DraftModelsSection.vue';
 import SavedModelsSection from '@/components/settings/model-source/SavedModelsSection.vue';
 import SourceFormSection from '@/components/settings/model-source/SourceFormSection.vue';
 import SourceListSection from '@/components/settings/model-source/SourceListSection.vue';
 import { useLocalModelInstallerStore } from '@/stores/localModelInstallerStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
-import type { ModelProvider } from '@/types/chat';
 
 const modelSourceStore = useModelSourceStore();
 const localModelInstallerStore = useLocalModelInstallerStore();
 const isDetailMode = ref(false);
 const showInstallConfirm = ref(false);
-
-const providerOptions: ModelProvider[] = [
-  'deepseek',
-  'openai',
-  'anthropic',
-  'google-gemini',
-  'claude-compatible',
-  'openrouter',
-  'ollama',
-  'openai-compatible',
-  'azure-openai',
-  'moonshot',
-  'qwen',
-  'doubao',
-  'glm',
-  'baichuan',
-  'minimax',
-  'siliconflow',
-  'tencent-hunyuan',
-  'local-llamacpp',
-];
 
 const canSubmit = computed(() => {
   return Boolean(
@@ -57,7 +36,7 @@ const logButtonTitle = computed(() =>
 );
 const localTaskBusy = computed(() => localModelInstallerStore.busy || localModelInstallerStore.polling);
 const taskStatusText = computed(() => localModelInstallerStore.taskDetail?.status || localModelInstallerStore.taskLaunch?.status || 'IDLE');
-const taskMessage = computed(() => localModelInstallerStore.taskDetail?.message || localModelInstallerStore.errorMessage || '当前无脚本任务');
+const taskMessage = computed(() => localModelInstallerStore.taskDetail?.message || localModelInstallerStore.errorMessage || customText.modelSource.localTaskEmpty);
 const taskStdout = computed(() => localModelInstallerStore.taskDetail?.stdout || '');
 const taskStderr = computed(() => localModelInstallerStore.taskDetail?.stderr || '');
 const taskScript = computed(() => localModelInstallerStore.taskDetail?.script || localModelInstallerStore.taskLaunch?.script || '-');
@@ -142,7 +121,7 @@ async function stopLocalTestModel() {
 async function refreshModelSources() {
   await modelSourceStore.refreshSourceCatalog();
   if (!modelSourceStore.errorMessage) {
-    modelSourceStore.successMessage = '已从保存配置中重新加载供应商列表。';
+    modelSourceStore.successMessage = customText.modelSource.localRefreshSuccess;
   }
 }
 
@@ -194,8 +173,8 @@ onBeforeUnmount(() => {
     <div v-if="modelSourceStore.successMessage" class="settings-modal-overlay" @click.self="closeSuccessModal">
       <div class="settings-modal-card settings-modal-card--success">
         <div class="settings-modal-card__header">
-          <span class="chat-header__status">操作完成</span>
-          <h2>已成功处理</h2>
+          <span class="chat-header__status">{{ customText.modelSource.localSuccessStatus }}</span>
+          <h2>{{ customText.modelSource.localSuccessTitle }}</h2>
         </div>
 
         <div class="settings-modal-card__content">
@@ -204,7 +183,7 @@ onBeforeUnmount(() => {
 
         <div class="settings-modal-card__actions">
           <button class="settings-panel__button settings-panel__button--primary" type="button" @click="closeSuccessModal">
-            确定
+            {{ customText.modelSource.localSuccessConfirm }}
           </button>
         </div>
       </div>
@@ -251,7 +230,7 @@ onBeforeUnmount(() => {
           <button
             class="settings-icon-button"
             type="button"
-            title="刷新供应商配置"
+            :title="customText.modelSource.localRefreshTitle"
             :disabled="modelSourceStore.loadingCatalog"
             @click="refreshModelSources"
           >
@@ -288,21 +267,21 @@ onBeforeUnmount(() => {
     <div v-if="!isDetailMode && localModelInstallerStore.logPanelOpen" class="settings-script-feedback">
       <div class="settings-script-log">
         <div class="settings-script-log__meta">
-          <span>状态：{{ taskStatusText }}</span>
-          <span>脚本：{{ taskScript }}</span>
-          <span>退出码：{{ taskExitCode }}</span>
-          <span>开始：{{ taskStartedAt }}</span>
-          <span>结束：{{ taskFinishedAt }}</span>
+          <span>{{ customText.modelSource.localTaskStatusLabel }}：{{ taskStatusText }}</span>
+          <span>{{ customText.modelSource.localScriptLabel }}：{{ taskScript }}</span>
+          <span>{{ customText.modelSource.localExitCodeLabel }}：{{ taskExitCode }}</span>
+          <span>{{ customText.modelSource.localTaskStartedAtLabel }}：{{ taskStartedAt }}</span>
+          <span>{{ customText.modelSource.localTaskFinishedAtLabel }}：{{ taskFinishedAt }}</span>
         </div>
 
         <div class="settings-script-log__block">
-          <span>当前消息</span>
+          <span>{{ customText.modelSource.localTaskMessageLabel }}</span>
           <pre>{{ taskMessage }}</pre>
         </div>
 
         <div class="settings-script-log__block">
           <span>{{ customText.modelSource.localStdoutTitle }}</span>
-          <pre>{{ taskStdout || '当前无脚本任务' }}</pre>
+          <pre>{{ taskStdout || customText.modelSource.localTaskEmpty }}</pre>
         </div>
 
         <div v-if="taskStderr" class="settings-script-log__block">
@@ -323,7 +302,7 @@ onBeforeUnmount(() => {
       <SourceFormSection
         :error-message="modelSourceStore.errorMessage"
         :form="modelSourceStore.form"
-        :provider-options="providerOptions"
+        :provider-options="modelProviderOptions"
         :can-submit="canSubmit"
         :saving="modelSourceStore.saving"
         @save="save"

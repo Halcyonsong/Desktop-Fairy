@@ -63,13 +63,6 @@ function speakerLabel(role: ChatMessage['role']) {
 function statusText(status: ChatMessage['status']) {
   return uiText.messageStatus[status];
 }
-
-async function copyMessage(content: string) {
-  if (!content) {
-    return;
-  }
-  await copyText(content);
-}
 </script>
 
 <template>
@@ -96,17 +89,13 @@ async function copyMessage(content: string) {
           v-for="message in messages"
           :key="message.id"
           :message="message"
-          :show-reasoning-toggle="isReasoningMessage(message)"
           :reasoning-open="isReasoningOpen(message)"
-          :reasoning-label="reasoningLabel(message)"
-          :reasoning-body="reasoningBody()"
           :speaker-label="speakerLabel(message.role)"
           :status-text="statusText(message.status)"
           :show-rollback="message.id === latestUserMessageId && isLatestRoundMessage(message)"
           :show-delete="message.id === latestAssistantMessageId && isLatestRoundMessage(message)"
           :sending="sending"
           @toggle-reasoning="toggleReasoning(message)"
-          @copy="copyMessage"
           @rollback="emit('rollbackLatestRound')"
           @delete="emit('deleteLatestRound')"
         />

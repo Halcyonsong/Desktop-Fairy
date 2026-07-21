@@ -81,8 +81,8 @@ const frameWidth = computed(() => currentFrame.value?.w ?? 138);
 const frameHeight = computed(() => currentFrame.value?.h ?? 194);
 const visualWidth = computed(() => Math.round(frameWidth.value * scaleValue.value));
 const visualHeight = computed(() => Math.round(frameHeight.value * scaleValue.value));
-const bubbleBottom = computed(() => Math.max(visualHeight.value - 88, 84));
-const bubbleGap = computed(() => Math.max(18, Math.round(16 + (scaleValue.value - 1) * 24)));
+const bubbleBottom = computed(() => Math.max(visualHeight.value - 96, 76));
+const bubbleGap = computed(() => Math.max(10, Math.round(8 + (scaleValue.value - 1) * 18)));
 const chatModeActive = computed(() => fairyChatStore.mode === 'temporary-chat');
 const usingTemporaryChat = computed(
   () => fairyChatStore.selected || fairyChatStore.isTemporaryChatSession(selectedSessionId.value),
@@ -386,10 +386,16 @@ const { shellRef, handlePointerDown, shouldSuppressClick } = useFairyDragControl
   hideOverlay: handleDragHideOverlay,
   onDragStateChange: (isDragging: boolean) => {
     setDragging(isDragging);
-    // 拖动开始时不切换动作；拖动结束后回到 idle
-    if (!isDragging) {
-      safeSetAnimation(PET_ANIMATIONS.idle);
+    if (isDragging) {
+      handleDragHideOverlay();
+      clearBubbleHideTimer();
+      clearComposerHideTimer();
+      sessionPickerOpen.value = false;
+      return;
     }
+
+    // 拖动结束后回到 idle
+    safeSetAnimation(PET_ANIMATIONS.idle);
   },
   onDragMove: (deltaX: number) => {
     // 根据水平拖动方向切换动作（向右 > 0，向左 < 0）
@@ -514,7 +520,7 @@ watch(
 watch(
   () => fairyChatStore.latestAssistantPreview,
   () => {
-    if (usingTemporaryChat.value) {
+    if (usingTemporaryChat.value && !dragging.value) {
       syncBubbleWithTemporaryChat();
     }
   },
@@ -569,7 +575,7 @@ watch(
 watch(
   () => fairyChatStore.messages,
   () => {
-    if (usingTemporaryChat.value) {
+    if (usingTemporaryChat.value && !dragging.value) {
       syncBubbleWithTemporaryChat();
     }
   },

@@ -94,7 +94,7 @@ export function useFairyConversationController(options: UseFairyConversationCont
     localDraft.value = '';
     sessionPickerOpen.value = false;
     showComposer();
-    showBubble('已刷新临时会话。');
+    showBubble('已新建临时会话，可以直接开始闲聊。');
   }
 
   async function chooseSession(sessionId: string) {

@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('desktopFairy', {
     ipcRenderer.on('fairy:enable-from-tray', () => callback?.());
   },
 
+  // 后端就绪通知：主进程在后端 health check 通过后发送
+  onBackendReady: (callback) => {
+    ipcRenderer.removeAllListeners('backend:ready');
+    ipcRenderer.on('backend:ready', () => callback?.());
+  },
+
   // 系统信息
   getFilePaths: () => ipcRenderer.invoke('system:get-file-paths'),
   readBackendLog: (lines) => ipcRenderer.invoke('system:read-backend-log', lines),

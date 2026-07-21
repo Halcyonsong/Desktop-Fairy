@@ -16,6 +16,7 @@ const WORKBENCH_WINDOW_MODE = 'workbench';
 const FAIRY_WINDOW_MODE = 'fairy';
 
 let backendProcess = null;
+let backendReady = false;
 let mainWindow = null;
 let fairyWindow = null;
 let tray = null;
@@ -96,21 +97,34 @@ function resolveFrontendEntry(windowMode) {
   };
 }
 
-function createTrayImage() {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-      <defs>
-        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="#8db3ff"/>
-          <stop offset="100%" stop-color="#5b7cff"/>
-        </linearGradient>
-      </defs>
-      <circle cx="16" cy="16" r="14" fill="url(#g)"/>
-      <path d="M16 7.5l2.5 5.1 5.6.8-4 3.9.9 5.5-5-2.6-5 2.6.9-5.5-4-3.9 5.6-.8z" fill="#ffffff"/>
-    </svg>
-  `;
+function resolveIconPath(filename) {
+  // 开发模式：frontend/build/<filename>
+  // 打包模式：app.asar/build/<filename>（electron-builder files 配置包含 build/**/*）
+  // 两种情况下 __dirname 都是 electron/ 目录，所以相对路径一致
+  return path.join(__dirname, '..', 'build', filename);
+}
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`);
+function loadIconFromFile(filename) {
+  const iconPath = resolveIconPath(filename);
+  if (!fs.existsSync(iconPath)) {
+    // 兜底：图标文件缺失时返回空图像，避免 Tray/BrowserWindow 构造抛错
+    return nativeImage.createEmpty();
+  }
+  return nativeImage.createFromPath(iconPath);
+}
+
+function loadAppIcon() {
+  // 应用主图标：.exe、任务栏、BrowserWindow（白底圆角矩形版）
+  return loadIconFromFile('icon.ico');
+}
+
+function loadTrayIcon() {
+  // 托盘图标：系统托盘通知区域（透明背景版）
+  return loadIconFromFile('tray.ico');
+}
+
+function createTrayImage() {
+  return loadTrayIcon();
 }
 
 function getFairyStateFilePath() {
@@ -238,13 +252,13 @@ function checkBackendHealth() {
     });
 
     request.on('error', reject);
-    request.setTimeout(3000, () => {
+    request.setTimeout(1000, () => {
       request.destroy(new Error('Backend health check timed out'));
     });
   });
 }
 
-async function waitForBackendReady(timeoutMs = 30000, intervalMs = 1000) {
+async function waitForBackendReady(timeoutMs = 30000, intervalMs = 300) {
   const start = Date.now();
   let lastError = null;
 
@@ -282,7 +296,24 @@ async function startBackend() {
     }
   });
 
-  await waitForBackendReady();
+  // 不再 await：后台轮询后端就绪状态，ready 后通过 IPC 通知前端
+  // 这样窗口可以立即创建显示，用户不用等待后端启动
+  waitForBackendReady()
+    .then(() => {
+      backendReady = true;
+      // 通知所有窗口的后端已就绪
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('backend:ready');
+        }
+      }
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      dialog.showErrorBox('Backend startup failed', `Desktop Fairy backend failed to start within 30 seconds.\n${message}`);
+      app.quit();
+    });
 }
 
 function loadWindowEntry(targetWindow, windowMode) {
@@ -432,6 +463,7 @@ function createMainWindow() {
     minHeight: 760,
     show: false,
     autoHideMenuBar: true,
+    icon: loadAppIcon(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -489,6 +521,7 @@ function createFairyWindow() {
     skipTaskbar: true,
     alwaysOnTop: true,
     autoHideMenuBar: true,
+    icon: loadAppIcon(),
     backgroundColor: '#00000000',
     webPreferences: {
       nodeIntegration: false,
@@ -695,9 +728,21 @@ async function bootstrap() {
     const preferences = readFairyPreferences();
     fairyWindowEnabled = preferences.enabled;
     registerIpc();
-    await startBackend();
+    // 先创建窗口和托盘，用户立即看到界面
+    // 后端在后台启动，ready 后通过 IPC 通知前端
     createWindows();
     createTray();
+    // 如果后端已经 ready（例如热重载场景），立即通知前端
+    if (backendReady) {
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('backend:ready');
+        }
+      }
+    }
+    // 启动后端（异步，不阻塞窗口显示）
+    startBackend();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     dialog.showErrorBox('Desktop Fairy startup failed', message);

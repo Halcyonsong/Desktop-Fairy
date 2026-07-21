@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AppShell from '@/components/layout/AppShell.vue';
 import ChatComposer from '@/components/chat/ChatComposer.vue';
 import ChatHeader from '@/components/chat/ChatHeader.vue';
 import MessageList from '@/components/chat/MessageList.vue';
 import SessionSidebar from '@/components/session/SessionSidebar.vue';
 import SettingsView from '@/views/SettingsView.vue';
+import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
+import { useBackendStatusStore } from '@/stores/backendStatusStore';
 import { useFairyChatStore } from '@/stores/fairyChatStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -16,6 +18,7 @@ const workbench = useWorkbenchStore();
 const uiStore = useUiStore();
 const modelSourceStore = useModelSourceStore();
 const fairyChatStore = useFairyChatStore();
+const chatPreferencesStore = useChatPreferencesStore();
 
 const temporarySummary = computed(() => fairyChatStore.temporarySessionSummary);
 const sidebarSessions = computed(() => {
@@ -62,6 +65,7 @@ const currentErrorMessage = computed(() => (fairyChatStore.selected ? fairyChatS
 const currentSending = computed(() => (fairyChatStore.selected ? fairyChatStore.sending : workbench.sending));
 const currentHistoryTotal = computed(() => (fairyChatStore.selected ? fairyChatStore.messages.length : workbench.historyTotal));
 const currentHistoryRefreshing = computed(() => (!fairyChatStore.selected ? workbench.refreshingHistory : false));
+const refreshHistorySuccess = ref(false);
 
 const shouldAutoFocusComposer = computed(() => {
   if (uiStore.viewMode !== 'chat') {
@@ -126,7 +130,20 @@ function handleRefreshHistory() {
   if (fairyChatStore.selected) {
     return;
   }
-  void workbench.refreshActiveHistory();
+
+  refreshHistorySuccess.value = false;
+  void workbench.refreshActiveHistory()
+    .then(() => {
+      if (!workbench.errorMessage) {
+        refreshHistorySuccess.value = true;
+        setTimeout(() => {
+          refreshHistorySuccess.value = false;
+        }, 1200);
+      }
+    })
+    .catch(() => {
+      refreshHistorySuccess.value = false;
+    });
 }
 
 function handleCreateSession() {
@@ -136,8 +153,28 @@ function handleCreateSession() {
 }
 
 onMounted(() => {
-  void workbench.bootstrap();
-  void modelSourceStore.bootstrap();
+  const backendStatusStore = useBackendStatusStore();
+
+  async function initWhenReady() {
+    if (!backendStatusStore.ready) {
+      // 等待后端 ready（Electron 环境下由 IPC 通知触发）
+      await new Promise<void>((resolve) => {
+        const stop = watch(
+          () => backendStatusStore.ready,
+          (ready) => {
+            if (ready) {
+              stop();
+              resolve();
+            }
+          },
+        );
+      });
+    }
+    void workbench.bootstrap();
+    void modelSourceStore.bootstrap();
+  }
+
+  void initWhenReady();
 });
 </script>
 
@@ -170,6 +207,7 @@ onMounted(() => {
               :session="currentSession"
               :history-total="currentHistoryTotal"
               :refreshing="currentHistoryRefreshing"
+              :refresh-success="refreshHistorySuccess"
               @refresh="handleRefreshHistory"
             />
             <MessageList
@@ -196,6 +234,7 @@ onMounted(() => {
               :max-tokens-input="modelSourceStore.maxTokensInput"
               :auto-focus="shouldAutoFocusComposer"
               :allow-empty-send="fairyChatStore.selected"
+              :tool-call-enabled="chatPreferencesStore.toolCallEnabled"
               @update:draft="fairyChatStore.selected ? fairyChatStore.setDraft($event) : workbench.setComposerDraft($event)"
               @send="handleComposerSend"
               @stop="handleComposerStop"
@@ -203,6 +242,7 @@ onMounted(() => {
               @select-model="modelSourceStore.selectChatModel"
               @update:temperature-input="modelSourceStore.setTemperatureInput"
               @update:max-tokens-input="modelSourceStore.setMaxTokensInput"
+              @toggle-tool-call="chatPreferencesStore.toggleToolCallEnabled()"
             />
           </template>
         </AppShell>

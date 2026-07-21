@@ -7,6 +7,7 @@ interface ChatPreferencesSnapshot {
   temperatureInput: string;
   maxTokensInput: string;
   systemPrompt: string;
+  toolCallEnabled: boolean;
 }
 
 function emptySnapshot(): ChatPreferencesSnapshot {
@@ -14,6 +15,7 @@ function emptySnapshot(): ChatPreferencesSnapshot {
     temperatureInput: '',
     maxTokensInput: '',
     systemPrompt: '',
+    toolCallEnabled: false,
   };
 }
 
@@ -33,6 +35,7 @@ function loadSnapshot(): ChatPreferencesSnapshot {
       temperatureInput: typeof parsed.temperatureInput === 'string' ? parsed.temperatureInput : '',
       maxTokensInput: typeof parsed.maxTokensInput === 'string' ? parsed.maxTokensInput : '',
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : '',
+      toolCallEnabled: typeof parsed.toolCallEnabled === 'boolean' ? parsed.toolCallEnabled : false,
     };
   } catch {
     return emptySnapshot();
@@ -44,6 +47,7 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
   const temperatureInput = ref(snapshot.temperatureInput);
   const maxTokensInput = ref(snapshot.maxTokensInput);
   const systemPrompt = ref(snapshot.systemPrompt);
+  const toolCallEnabled = ref(snapshot.toolCallEnabled);
 
   const hasCustomRuntimeSettings = computed(() =>
     Boolean(temperatureInput.value.trim() || maxTokensInput.value.trim() || systemPrompt.value.trim()),
@@ -58,6 +62,7 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
       temperatureInput: temperatureInput.value,
       maxTokensInput: maxTokensInput.value,
       systemPrompt: systemPrompt.value,
+      toolCallEnabled: toolCallEnabled.value,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }
@@ -67,6 +72,7 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
     temperatureInput.value = nextSnapshot.temperatureInput;
     maxTokensInput.value = nextSnapshot.maxTokensInput;
     systemPrompt.value = nextSnapshot.systemPrompt;
+    toolCallEnabled.value = nextSnapshot.toolCallEnabled;
   }
 
   function setTemperatureInput(value: string) {
@@ -84,6 +90,16 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
     persist();
   }
 
+  function setToolCallEnabled(value: boolean) {
+    toolCallEnabled.value = value;
+    persist();
+  }
+
+  function toggleToolCallEnabled() {
+    toolCallEnabled.value = !toolCallEnabled.value;
+    persist();
+  }
+
   function resetRuntimeSettings() {
     temperatureInput.value = '';
     maxTokensInput.value = '';
@@ -95,11 +111,14 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
     temperatureInput,
     maxTokensInput,
     systemPrompt,
+    toolCallEnabled,
     hasCustomRuntimeSettings,
     syncFromStorage,
     setTemperatureInput,
     setMaxTokensInput,
     setSystemPrompt,
+    setToolCallEnabled,
+    toggleToolCallEnabled,
     resetRuntimeSettings,
   };
 });

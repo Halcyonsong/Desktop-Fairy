@@ -13,14 +13,11 @@ function buildPetUrl(pathname: string) {
 }
 
 /**
- * 优先加载 {petId}.json（新网格格式约定），失败则回退到 pet.json（旧格式）。
- * 这样既能支持新素材约定，又能兼容旧素材。
+ * 新网格格式约定：每个精灵使用 pets/{petId}/{petId}.json。
+ * 旧版 pet.json 已不再支持，配置必须是网格格式（含 sheet 字段）。
  */
-function buildPetJsonUrls(petId: string): string[] {
-  return [
-    buildPetUrl(`pets/${petId}/${petId}.json`),
-    buildPetUrl(`pets/${petId}/pet.json`),
-  ];
+function buildPetJsonUrl(petId: string): string {
+  return buildPetUrl(`pets/${petId}/${petId}.json`);
 }
 
 function buildPetAssetUrl(petId: string, relativePath: string) {
@@ -115,51 +112,41 @@ function convertGridPetDefinition(grid: GridPetDefinition): PetDefinition {
 }
 
 /**
- * 检测 JSON 是否为新网格格式（包含 sheet 字段）。
+ * 运行时校验：必须是新网格格式（包含 sheet 字段）。
+ * 旧版 pet.json（显式帧枚举）已不再支持，遇到会直接抛错。
  */
-function isGridPetDefinition(raw: unknown): raw is GridPetDefinition {
-  return (
-    typeof raw === 'object'
-    && raw !== null
-    && 'sheet' in raw
-    && typeof (raw as { sheet?: unknown }).sheet === 'object'
-  );
+function assertGridPetDefinition(raw: unknown): asserts raw is GridPetDefinition {
+  if (
+    typeof raw !== 'object'
+    || raw === null
+    || !('sheet' in raw)
+    || typeof (raw as { sheet?: unknown }).sheet !== 'object'
+  ) {
+    throw new Error(
+      '精灵配置必须是新网格格式（含 sheet 字段）。旧版 pet.json 已不再支持，请迁移到 {petId}.json 网格格式。',
+    );
+  }
 }
 
 export async function loadPetDefinition(petId: string) {
-  const candidates = buildPetJsonUrls(petId);
-  let lastError: unknown = null;
-  let response: Response | null = null;
+  const url = buildPetJsonUrl(petId);
 
-  // 依次尝试候选地址，直到成功
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        response = res;
-        break;
-      }
-      lastError = new Error(`HTTP ${res.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  if (!response) {
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
     throw new Error(
-      `无法读取精灵配置：${lastError instanceof Error ? lastError.message : String(lastError)}`,
+      `无法读取精灵配置：${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
-  const raw = await response.json();
-
-  // 新网格格式展开为内部 PetDefinition；旧格式直接使用
-  let petDefinition: PetDefinition;
-  if (isGridPetDefinition(raw)) {
-    petDefinition = convertGridPetDefinition(raw);
-  } else {
-    petDefinition = raw as PetDefinition;
+  if (!response.ok) {
+    throw new Error(`无法读取精灵配置：HTTP ${response.status}`);
   }
+
+  const raw = await response.json();
+  assertGridPetDefinition(raw);
+  const petDefinition = convertGridPetDefinition(raw);
 
   return {
     ...petDefinition,

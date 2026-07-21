@@ -106,7 +106,7 @@ const fairyStore = useFairyStore();
             <span class="settings-tag">{{ fairyStore.statusText }}</span>
             <span class="settings-tag">{{ fairyStore.enabled ? customText.desktopBehavior.visibleTag : customText.desktopBehavior.hiddenTag }}</span>
             <span class="settings-tag">{{ fairyStore.residentChatEnabled ? customText.desktopBehavior.residentChatEnabledTag : customText.desktopBehavior.residentChatDisabledTag }}</span>
-            <span class="settings-tag">Pet: {{ fairyStore.petId }}</span>
+            <span class="settings-tag">{{ customText.desktopBehavior.petTagPrefix }}: {{ fairyStore.petId }}</span>
           </div>
         </div>
       </div>

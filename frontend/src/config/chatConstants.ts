@@ -4,7 +4,26 @@ export const CHAT_EVENT = {
   stop: 1003,
   interrupted: 1004,
   error: 1005,
+  toolStatus: 1006,
+  toolResult: 1007,
 } as const;
+
+// 1006 TOOL_STATUS / 1007 TOOL_RESULT 的 stage 取值
+export const TOOL_STAGE = {
+  roundStart: 'ROUND_START',
+  toolCall: 'TOOL_CALL',
+  roundContinue: 'ROUND_CONTINUE',
+  directiveWarning: 'DIRECTIVE_WARNING',
+  directiveLimit: 'DIRECTIVE_LIMIT',
+  roundLimit: 'ROUND_LIMIT',
+  toolLimit: 'TOOL_LIMIT',
+  timeLimit: 'TIME_LIMIT',
+  toolResult: 'TOOL_RESULT',
+} as const;
+
+// 正文尾部轮次控制标记（展示时裁掉，原始文本保留）
+// 新格式为前后包裹的闭合标记，可精确识别，避免与正文粘连
+export const TOOL_DIRECTIVE_MARKERS = ['@Continue@', '@Finish@', '@Missing@'] as const;
 
 export const HISTORY_NO_MORE_CACHE_MS = 30_000;
 

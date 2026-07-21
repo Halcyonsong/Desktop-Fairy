@@ -13,16 +13,26 @@ const loading = ref(false);
 const errorMsg = ref<string>('');
 const copiedKey = ref<string>('');
 const copyFailed = ref<boolean>(false);
+const refreshSuccess = ref(false);
+const hasLoadedOnce = ref(false);
 
-async function loadFilePaths() {
+async function loadFilePaths(options: { showRefreshSuccess?: boolean } = {}) {
   if (!desktopFairy.isAvailable()) {
     errorMsg.value = '此功能仅在 Electron 桌面应用环境下可用。请在桌面应用中查看文件路径。';
     return;
   }
   loading.value = true;
   errorMsg.value = '';
+  refreshSuccess.value = false;
   try {
     filePaths.value = await desktopFairy.getFilePaths();
+    if (options.showRefreshSuccess && hasLoadedOnce.value) {
+      refreshSuccess.value = true;
+      setTimeout(() => {
+        refreshSuccess.value = false;
+      }, UI_TIMING.copyFeedbackResetMs);
+    }
+    hasLoadedOnce.value = true;
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -41,6 +51,7 @@ async function copyPath(path: string, key: string) {
     },
     onFail: () => {
       copyFailed.value = true;
+      copiedKey.value = '';
       setTimeout(() => {
         copyFailed.value = false;
       }, UI_TIMING.copyFeedbackResetMs);
@@ -49,11 +60,11 @@ async function copyPath(path: string, key: string) {
 }
 
 function refresh() {
-  loadFilePaths();
+  void loadFilePaths({ showRefreshSuccess: true });
 }
 
 onMounted(() => {
-  loadFilePaths();
+  void loadFilePaths();
 });
 </script>
 
@@ -70,8 +81,8 @@ onMounted(() => {
         :disabled="loading || !desktopFairy.isAvailable()"
         @click="refresh"
       >
-        <RefreshCw :size="14" :class="{ 'spin': loading }" />
-        <span>刷新</span>
+        <RefreshCw :size="14" :class="{ spin: loading }" />
+        <span>{{ refreshSuccess ? '已刷新' : '刷新' }}</span>
       </button>
     </header>
 
@@ -91,7 +102,15 @@ onMounted(() => {
         加载中...
       </div>
 
-      <div v-else-if="filePaths" class="file-paths__list">
+      <div v-else-if="refreshSuccess" class="file-paths__success">
+        路径信息已刷新。
+      </div>
+
+      <div v-if="copyFailed" class="file-paths__error file-paths__error--inline">
+        复制失败，请手动选择路径后复制。
+      </div>
+
+      <div v-if="filePaths" class="file-paths__list">
         <div
           v-for="item in filePaths.paths"
           :key="item.key"
@@ -103,11 +122,11 @@ onMounted(() => {
             <button
               class="file-paths__copy-btn"
               type="button"
-              :title="copiedKey === item.key ? '已复制！' : '复制路径'"
+              :title="copyFailed ? '复制失败' : copiedKey === item.key ? '已复制！' : '复制路径'"
               @click="copyPath(item.path, item.key)"
             >
               <Copy :size="12" />
-              <span>{{ copiedKey === item.key ? '已复制' : '复制' }}</span>
+              <span>{{ copyFailed ? '复制失败' : copiedKey === item.key ? '已复制' : '复制' }}</span>
             </button>
           </div>
           <code class="file-paths__item-path">{{ item.path }}</code>
@@ -115,7 +134,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 环境信息 -->
       <div v-if="filePaths" class="file-paths__env">
         <h3>环境信息</h3>
         <div class="file-paths__env-grid">
@@ -168,14 +186,28 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-.file-paths__error {
+.file-paths__error,
+.file-paths__success {
   padding: 10px 14px;
   margin-bottom: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.file-paths__error {
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning);
-  border-radius: 6px;
   color: var(--color-warning);
-  font-size: 13px;
+}
+
+.file-paths__error--inline {
+  margin-top: 12px;
+}
+
+.file-paths__success {
+  background: color-mix(in srgb, var(--color-success, #10b981) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success, #10b981) 45%, transparent);
+  color: color-mix(in srgb, var(--color-success, #10b981) 86%, var(--color-text) 14%);
 }
 
 .file-paths__loading {
@@ -258,55 +290,49 @@ onMounted(() => {
 .file-paths__item-desc {
   font-size: 12px;
   color: var(--color-text-muted);
-  line-height: 1.5;
-  margin: 0;
 }
 
 .file-paths__env {
-  margin-top: 24px;
-  padding-top: 16px;
+  margin-top: 20px;
+  padding-top: 20px;
   border-top: 1px solid var(--color-border);
 }
 
 .file-paths__env h3 {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text);
   margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .file-paths__env-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
 }
 
 .file-paths__env-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
 }
 
 .file-paths__env-label {
+  display: block;
+  margin-bottom: 4px;
   font-size: 11px;
   color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .file-paths__env-item code {
-  padding: 4px 8px;
-  background: var(--color-bg);
-  border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  color: var(--color-text-muted);
+  font-size: 12px;
+  color: var(--color-text);
   word-break: break-all;
-  user-select: all;
 }
 
 .spin {
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {

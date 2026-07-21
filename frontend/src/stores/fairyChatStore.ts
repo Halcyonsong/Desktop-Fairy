@@ -235,11 +235,16 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
   }
 
   function pruneTemporarySessionIfExpired() {
-    if (!temporarySessionId.value || !lastSessionActivityAt.value) {
+    if (!temporarySessionId.value) {
       return;
     }
 
-    if (Date.now() - lastSessionActivityAt.value > TEMPORARY_SESSION_TTL_MS) {
+    const lastUserIdleAt = lastUserActivityAt.value || 0;
+    if (!lastUserIdleAt) {
+      return;
+    }
+
+    if (Date.now() - lastUserIdleAt > TEMPORARY_SESSION_TTL_MS) {
       resetTemporarySession();
       selected.value = false;
       if (mode.value === 'temporary-chat' && !sending.value) {

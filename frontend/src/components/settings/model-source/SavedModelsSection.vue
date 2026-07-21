@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue';
+import { customText } from '@/config/customText';
 import type { ModelSourceDetail } from '@/types/chat';
 
 defineProps<{
@@ -15,8 +16,8 @@ const emit = defineEmits<{
 <template>
   <section class="settings-section settings-section--compact">
     <div class="settings-models__header settings-models__header--compact">
-      <h3>已添加模型</h3>
-      <button class="settings-icon-button settings-icon-button--danger" type="button" title="删除供应商" @click="emit('removeSource', sourceDetail.sourceCode)">
+      <h3>{{ customText.modelSource.savedModelsTitle }}</h3>
+      <button class="settings-icon-button settings-icon-button--danger" type="button" :title="customText.modelSource.removeSourceTitle" @click="emit('removeSource', sourceDetail.sourceCode)">
         <Trash2 :size="16" />
       </button>
     </div>
@@ -29,7 +30,7 @@ const emit = defineEmits<{
           <button
             class="settings-icon-button settings-icon-button--ghost settings-icon-button--danger"
             type="button"
-            title="删除模型"
+            :title="customText.modelSource.removeModelTitle"
             @click="emit('removeModel', sourceDetail.sourceCode, model.modelName)"
           >
             <Trash2 :size="16" />

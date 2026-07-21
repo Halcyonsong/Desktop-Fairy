@@ -1,24 +1,59 @@
 <script setup lang="ts">
-import { Copy, RotateCcw, Trash2 } from '@lucide/vue';
+import { computed, ref } from 'vue';
+import { Check, Copy, RotateCcw, Trash2 } from '@lucide/vue';
+import { UI_TIMING } from '@/config/uiConstants';
 import { uiText } from '@/config/uiText';
+import { copyText } from '@/utils/clipboard';
 
-defineProps<{
+const props = defineProps<{
   showRollback: boolean;
   showDelete: boolean;
   sending: boolean;
+  content: string;
 }>();
 
 const emit = defineEmits<{
-  copy: [];
   rollback: [];
   delete: [];
 }>();
+
+// 复制反馈状态
+const copied = ref(false);
+let resetTimer: ReturnType<typeof setTimeout> | null = null;
+
+const copyButtonTitle = computed(() =>
+  copied.value ? uiText.chat.copied : uiText.chat.copy,
+);
+
+async function handleCopy() {
+  if (!props.content) {
+    return;
+  }
+  const success = await copyText(props.content);
+  if (success) {
+    copied.value = true;
+    if (resetTimer) {
+      clearTimeout(resetTimer);
+    }
+    resetTimer = setTimeout(() => {
+      copied.value = false;
+      resetTimer = null;
+    }, UI_TIMING.copyFeedbackResetMs);
+  }
+}
 </script>
 
 <template>
   <div class="message-actions">
-    <button class="message-action-button" type="button" :title="uiText.chat.copy" @click="emit('copy')">
-      <Copy :size="15" />
+    <button
+      class="message-action-button"
+      :class="{ 'message-action-button--success': copied }"
+      type="button"
+      :title="copyButtonTitle"
+      @click="handleCopy"
+    >
+      <Check v-if="copied" :size="15" />
+      <Copy v-else :size="15" />
     </button>
     <button
       v-if="showRollback"

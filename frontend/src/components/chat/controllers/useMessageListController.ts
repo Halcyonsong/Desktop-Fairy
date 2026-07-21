@@ -56,7 +56,7 @@ export function useMessageListController(options: MessageListControllerOptions) 
   );
 
   watch(
-    () => options.messages().length,
+    () => options.messages().map((message) => `${message.id}:${message.status}:${message.content.length}:${message.segments?.length ?? 0}`).join('|'),
     async () => {
       if (pendingSessionScrollToBottom.value) {
         pendingSessionScrollToBottom.value = false;
@@ -65,7 +65,11 @@ export function useMessageListController(options: MessageListControllerOptions) 
       }
 
       if (beforeLoadScrollHeight.value === null) {
-        updateBackToBottom();
+        if (options.sending()) {
+          await scrollToBottom(false);
+        } else {
+          updateBackToBottom();
+        }
         return;
       }
 

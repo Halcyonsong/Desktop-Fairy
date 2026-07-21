@@ -19,12 +19,12 @@ export const UI_TIMING = {
 
 export const FAIRY_TIMING = {
   /** 桌面精灵气泡自动隐藏时间（毫秒） */
-  bubbleAutoHideMs: 9000,
+  bubbleAutoHideMs: 5000,
 
   /** 桌面精灵闲置检测轮询间隔（毫秒） */
   idleCheckIntervalMs: 5000,
 
-  /** 精灵动画帧回退间隔（毫秒），当 pet.json 未指定 fps 时使用 */
+  /** 精灵动画帧回退间隔（毫秒），当 {petId}.json 未指定 fps 时使用 */
   petFrameFallbackIntervalMs: 180,
 } as const;
 

@@ -197,6 +197,16 @@ export async function sendWorkbenchMessage(
   state.errorMessage.value = '';
   state.composerDraft.value = '';
 
+  // 流式过程中 handleStreamEvent 直接 mutate assistantMessage（普通对象），
+  // 每次事件后用新对象替换数组中的消息，强制 Vue 检测到 prop 变更并重渲染 MessageRow。
+  // 不依赖深层响应式，因为 Pinia + computed + props 链路下深层 mutate 不可靠。
+  function commitMessageChange() {
+    const index = state.messages.value.findIndex((m) => m.id === assistantMessage.id);
+    if (index >= 0) {
+      state.messages.value[index] = { ...assistantMessage };
+    }
+  }
+
   try {
     await chatApi.sendChat({
       sessionId,
@@ -204,7 +214,8 @@ export async function sendWorkbenchMessage(
       systemPrompt: chatPreferencesStore.systemPrompt,
       model: modelSourceStore.selectedChatModelConfig,
       signal: abortController.signal,
-      onEvent: (event) =>
+      enableToolCalling: chatPreferencesStore.toolCallEnabled,
+      onEvent: (event) => {
         handleStreamEvent(
           event,
           assistantMessage,
@@ -212,7 +223,9 @@ export async function sendWorkbenchMessage(
           reasoning.setReasoningText,
           reasoning.setReasoningMessageId,
           reasoning.reasoningBySession.value,
-        ),
+        );
+        commitMessageChange();
+      },
     });
 
     if (assistantMessage.status === 'streaming') {
@@ -220,6 +233,7 @@ export async function sendWorkbenchMessage(
     }
     assistantMessage.timing ??= {};
     assistantMessage.timing.completedAt ??= Date.now();
+    commitMessageChange();
 
     await refreshSessions();
   } catch (error) {
@@ -231,6 +245,7 @@ export async function sendWorkbenchMessage(
     }
     assistantMessage.timing ??= {};
     assistantMessage.timing.completedAt ??= Date.now();
+    commitMessageChange();
   } finally {
     state.sending.value = false;
     state.streamController.value = null;

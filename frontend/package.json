@@ -1,6 +1,6 @@
 {
   "name": "desktop-fairy-workbench",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -43,6 +43,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/**/*",
       "node_modules/koffi/**/*",
       "package.json"
     ],
@@ -71,7 +72,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

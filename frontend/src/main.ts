@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { useAppearanceStore } from '@/stores/appearanceStore';
+import { useBackendStatusStore } from '@/stores/backendStatusStore';
 import { useFairyStore } from '@/stores/fairyStore';
 import { useWindowModeStore, type WindowMode } from '@/stores/windowModeStore';
 import { installConsoleInterceptor } from '@/modules/installConsoleInterceptor';
@@ -50,6 +51,7 @@ declare global {
       setFairyEnabled?: (enabled: boolean) => void;
       onForceDisableResidentChat?: (callback: () => void) => void;
       onEnableFairyFromTray?: (callback: () => void) => void;
+      onBackendReady?: (callback: () => void) => void;
       getFilePaths?: () => Promise<FilePathsResult>;
       readBackendLog?: (lines: number) => Promise<BackendLogResult>;
     };
@@ -124,6 +126,7 @@ async function bootstrap() {
   const appearanceStore = useAppearanceStore();
   const fairyStore = useFairyStore();
   const windowModeStore = useWindowModeStore();
+  const backendStatusStore = useBackendStatusStore();
 
   await preloadFairyNativePreferences(fairyStore);
 
@@ -137,6 +140,10 @@ async function bootstrap() {
   });
   window.desktopFairy?.onEnableFairyFromTray?.(() => {
     fairyStore.setEnabled(true);
+  });
+  // 监听后端就绪 IPC 通知（Electron 环境下主进程发送）
+  window.desktopFairy?.onBackendReady?.(() => {
+    backendStatusStore.markReady();
   });
   windowModeStore.setWindowMode(await resolveInitialWindowMode());
 

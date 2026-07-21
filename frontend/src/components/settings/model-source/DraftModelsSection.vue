@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Eraser, FlaskConical, ListRestart, Plus, Trash2 } from '@lucide/vue';
+import { customText } from '@/config/customText';
 import type { ModelSourceModelInput } from '@/types/chat';
 
 export type DraftModelTestState = 'idle' | 'testing' | 'success' | 'error';
@@ -25,13 +26,13 @@ const emit = defineEmits<{
 <template>
   <section class="settings-section settings-section--compact">
     <div class="settings-models__header settings-models__header--compact">
-      <h3>新增模型</h3>
+      <h3>{{ customText.modelSource.draftModelsTitle }}</h3>
 
       <div class="settings-models__header-actions">
         <button
           class="settings-icon-button"
           type="button"
-          title="清空当前新增模型"
+          :title="customText.modelSource.clearDraftModelsTitle"
           @click="emit('clearModels')"
         >
           <Eraser :size="16" />
@@ -40,14 +41,14 @@ const emit = defineEmits<{
         <button
           class="settings-icon-button"
           type="button"
-          title="从供应商拉取模型列表"
+          :title="customText.modelSource.fetchDraftModelsTitle"
           :disabled="fetchingModels"
           @click="emit('fetchModels')"
         >
           <ListRestart :size="16" />
         </button>
 
-        <button class="settings-icon-button settings-icon-button--filled" type="button" title="新增模型" @click="emit('addModel')">
+        <button class="settings-icon-button settings-icon-button--filled" type="button" :title="customText.modelSource.addDraftModelTitle" @click="emit('addModel')">
           <Plus :size="16" />
         </button>
       </div>
@@ -58,7 +59,7 @@ const emit = defineEmits<{
         <input
           :value="model.modelName"
           type="text"
-          placeholder="例如：deepseek-chat"
+          :placeholder="customText.modelSource.draftModelPlaceholder"
           @input="emit('updateModel', model.localId, ($event.target as HTMLInputElement).value)"
         />
 
@@ -77,7 +78,7 @@ const emit = defineEmits<{
           <button
             class="settings-icon-button settings-icon-button--ghost"
             type="button"
-            title="测试连接"
+            :title="customText.modelSource.testConnectionTitle"
             :disabled="!model.modelName.trim() || testingModelLocalId === model.localId"
             @click="emit('testModel', model.localId)"
           >
@@ -87,7 +88,7 @@ const emit = defineEmits<{
           <button
             class="settings-icon-button settings-icon-button--ghost settings-icon-button--danger"
             type="button"
-            title="移除模型"
+            :title="customText.modelSource.removeDraftModelTitle"
             @click="emit('removeModel', model.localId)"
           >
             <Trash2 :size="16" />

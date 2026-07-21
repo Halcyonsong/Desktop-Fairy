@@ -1,6 +1,8 @@
 export type ViewMode = 'chat' | 'settings';
 
-// ===== 旧格式类型（显式帧枚举）=====
+// ===== 内部解析后的格式（显式帧枚举）=====
+// 网格格式（GridPetDefinition）在 petLoader 中展开为此结构，
+// usePetPlayer 只消费 PetDefinition。
 
 export interface PetFrameRect {
   x: number;
@@ -34,7 +36,8 @@ export interface PetDefinition {
   animations: Record<string, PetAnimationClip>;
 }
 
-// ===== 新网格格式类型（row + frameCount + playOrder）=====
+// ===== 新网格格式（row + frameCount + playOrder）=====
+// 这是 {petId}.json 配置文件使用的格式，由 petLoader 解析后转为 PetDefinition。
 
 export interface PetSheetConfig {
   width: number;

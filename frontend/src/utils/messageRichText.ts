@@ -221,6 +221,26 @@ export function parseMessageBlocks(content: string): MessageBlock[] {
       continue;
     }
 
+    // 兼容无表头表格：分隔符作为第一行（非标准 markdown，但后端可能输出）
+    // 生成默认表头 "列1"、"列2"...，所有数据行都作为数据行
+    if (isTableSeparator(line) && index + 1 < lines.length && looksLikeTableRow(lines[index + 1])) {
+      const dataRows: string[] = [];
+      index += 1;
+      while (index < lines.length && looksLikeTableRow(lines[index])) {
+        dataRows.push(lines[index]);
+        index += 1;
+      }
+      if (dataRows.length > 0) {
+        const columnCount = splitTableRow(dataRows[0]).length;
+        const header = Array.from({ length: columnCount }, (_, i) =>
+          parseInlineSegments(`列${i + 1}`),
+        );
+        const rows = dataRows.map((row) => splitTableRow(row).map(parseInlineSegments));
+        blocks.push({ type: 'table', header, rows });
+      }
+      continue;
+    }
+
     const paragraphLines: string[] = [];
     while (index < lines.length) {
       const current = lines[index];

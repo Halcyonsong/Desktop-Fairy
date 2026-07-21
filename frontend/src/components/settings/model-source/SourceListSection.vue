@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ChevronRight, CirclePlus } from '@lucide/vue';
+import { customText } from '@/config/customText';
 import type { ModelProvider, ModelSourceListItem } from '@/types/chat';
 
 defineProps<{
@@ -21,7 +22,7 @@ const emit = defineEmits<{
 
     <div v-if="groupedSources.length === 0" class="settings-empty-state settings-empty-state--compact">
       <CirclePlus :size="18" />
-      <span>暂无供应商</span>
+      <span>{{ customText.modelSource.emptySourcesText }}</span>
     </div>
 
     <div v-else class="settings-provider-groups">

@@ -205,11 +205,22 @@ function createFairyDragController(getFairyWindow) {
   // 轮询 fallback 方案状态
   let dragSession = null;
 
-  const nativeApi = loadNativeDragApi();
-  if (nativeApi) {
-    console.log('[fairyDragController] native 拖动已启用（GetCursorPos + MoveWindow）');
-  } else {
-    console.log('[fairyDragController] 使用 Electron 轮询方案');
+  // 懒加载 native API：只在第一次真正拖动时才加载 koffi，避免阻塞启动
+  let nativeApi = null;
+  let nativeApiLoaded = false;
+
+  function getNativeApi() {
+    if (nativeApiLoaded) {
+      return nativeApi;
+    }
+    nativeApiLoaded = true;
+    nativeApi = loadNativeDragApi();
+    if (nativeApi) {
+      console.log('[fairyDragController] native 拖动已启用（GetCursorPos + MoveWindow）');
+    } else {
+      console.log('[fairyDragController] 使用 Electron 轮询方案');
+    }
+    return nativeApi;
   }
 
   // ============ native 方案（物理像素坐标）============
@@ -300,6 +311,8 @@ function createFairyDragController(getFairyWindow) {
     targetWindow.moveTop();
 
     // native 方案：全物理像素坐标操作
+    // getNativeApi() 首次调用会加载 koffi，加载结果也写入外层 nativeApi 供 startNativePolling 使用
+    const nativeApi = getNativeApi();
     if (nativeApi) {
       try {
         const hwndBuf = targetWindow.getNativeWindowHandle();
@@ -347,7 +360,7 @@ function createFairyDragController(getFairyWindow) {
   }
 
   function updateDrag(event, payload) {
-    if (nativeApi) {
+    if (getNativeApi()) {
       return; // native 方案由 16ms 轮询驱动，忽略渲染进程 pointer 事件
     }
 
@@ -408,7 +421,7 @@ function createFairyDragController(getFairyWindow) {
   }
 
   function isNativeDragEnabled() {
-    return nativeApi !== null;
+    return getNativeApi() !== null;
   }
 
   return {

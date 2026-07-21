@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2 } from '@lucide/vue';
+import { LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2, Wrench } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ModelPicker from '@/components/chat/composer/ModelPicker.vue';
 import RuntimeSettingsPopover from '@/components/chat/composer/RuntimeSettingsPopover.vue';
@@ -19,6 +19,7 @@ const props = defineProps<{
   maxTokensInput: string;
   autoFocus: boolean;
   allowEmptySend?: boolean;
+  toolCallEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   selectModel: [sourceCode: string, modelName: string];
   'update:temperature-input': [value: string];
   'update:max-tokens-input': [value: string];
+  'toggle-tool-call': [];
 }>();
 
 const pickerOpen = ref(false);
@@ -53,13 +55,17 @@ const voiceInput = useVoskVoiceController({
 
 const voiceButtonTitle = computed(() => {
   if (!voiceInput.isSupported.value) {
-    return '当前浏览器不支持语音输入';
+    return uiText.composer.voiceUnsupported;
   }
   if (voiceInput.isLoading.value) {
-    return voiceInput.loadingMessage.value || '正在准备语音识别...';
+    return voiceInput.loadingMessage.value || uiText.composer.voicePreparing;
   }
-  return voiceInput.isListening.value ? '点击停止语音输入' : '点击开始语音输入（首次使用需下载模型）';
+  return voiceInput.isListening.value ? uiText.composer.voiceStop : uiText.composer.voiceStart;
 });
+
+const toolCallButtonTitle = computed(() =>
+  props.toolCallEnabled ? uiText.composer.toolCallOn : uiText.composer.toolCallOff,
+);
 
 function submit() {
   const value = props.draft.trim();
@@ -181,6 +187,18 @@ watch(
               </template>
             </RuntimeSettingsPopover>
           </div>
+
+          <button
+            v-if="appConfig.featureFlags.toolCallEntry"
+            class="composer-tool-button composer-tool-button--toggle"
+            :class="{ 'composer-tool-button--active': toolCallEnabled }"
+            type="button"
+            :title="toolCallButtonTitle"
+            :aria-pressed="toolCallEnabled ? 'true' : 'false'"
+            @click="emit('toggle-tool-call')"
+          >
+            <Wrench :size="18" />
+          </button>
         </div>
 
         <div class="composer-tools-right">

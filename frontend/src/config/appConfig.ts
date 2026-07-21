@@ -10,5 +10,6 @@ export const appConfig = {
     settingsEntry: true,
     attachmentEntry: true,
     modelPresetEntry: true,
+    toolCallEntry: true,
   },
 } as const;

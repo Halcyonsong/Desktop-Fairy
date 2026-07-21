@@ -5,5 +5,5 @@ public final class ChatHistoryConstants {
     private ChatHistoryConstants() {
     }
 
-    public static final int HISTORY_PAGE_SIZE = 10;
+    public static final int HISTORY_PAGE_SIZE = 16;
 }
