@@ -16,4 +16,10 @@ public class ToolStatusEventVO {
     private String stage;
 
     private String message;
+
+    private String toolCallId;
+
+    private String toolName;
+
+    private String toolArguments;
 }

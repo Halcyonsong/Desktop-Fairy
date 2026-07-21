@@ -2,12 +2,11 @@ import type {
   ChatDirectiveMarker,
   ChatMessage,
   ChatMessageBlock,
-  ChatRoundSegment,
+  ModelStreamErrorEvent,
   ToolStatusEvent,
 } from '@/types/chat';
 
 const MARKER_REGEX = /(?:\n|^)[ \t]*(@Continue@|@Finish@|@Missing@)[ \t]*$/;
-const LOOP_HEADER = '@Loop@';
 
 export function buildLocalMessage(
   role: ChatMessage['role'],
@@ -58,11 +57,47 @@ export function parseToolStatusEvent(eventData: unknown): ToolStatusEvent | null
     return null;
   }
 
-  const value = eventData as { round: number; stage: string; message: string };
+  const value = eventData as {
+    round: number;
+    stage: string;
+    message: string;
+    toolCallId?: unknown;
+    toolName?: unknown;
+    toolArguments?: unknown;
+  };
   return {
     round: value.round,
     stage: value.stage,
     message: value.message,
+    toolCallId: typeof value.toolCallId === 'string' ? value.toolCallId : null,
+    toolName: typeof value.toolName === 'string' ? value.toolName : null,
+    toolArguments: typeof value.toolArguments === 'string' ? value.toolArguments : null,
+  };
+}
+
+export function parseModelStreamErrorEvent(eventData: unknown): ModelStreamErrorEvent | null {
+  if (
+    typeof eventData !== 'object'
+    || eventData === null
+    || typeof (eventData as { errorType?: unknown }).errorType !== 'string'
+    || typeof (eventData as { message?: unknown }).message !== 'string'
+  ) {
+    return null;
+  }
+
+  const value = eventData as {
+    errorType: string;
+    message: string;
+    retryable?: unknown;
+    partialOutput?: unknown;
+    partialContent?: unknown;
+  };
+  return {
+    errorType: value.errorType,
+    message: value.message,
+    retryable: value.retryable === true,
+    partialOutput: value.partialOutput === true,
+    partialContent: typeof value.partialContent === 'string' ? value.partialContent : '',
   };
 }
 
@@ -89,30 +124,6 @@ export function stripControlMarkers(text: string): string {
     .replace(/(?<!\/)@(?:Loop|Continue|Finish|Missing)@/g, '')
     // 2. 将转义标记的 / 去掉，保留 @XXX@ 作为普通文本输出
     .replace(/\/@(Loop|Continue|Finish|Missing)@/g, '@$1@');
-}
-
-export function ensureMessageSegments(message: ChatMessage) {
-  if (!message.segments) {
-    message.segments = [];
-  }
-  return message.segments;
-}
-
-export function ensureRoundSegment(message: ChatMessage, round: number): ChatRoundSegment {
-  const segments = ensureMessageSegments(message);
-  let segment = segments.find((item) => item.round === round);
-  if (!segment) {
-    segment = {
-      round,
-      reasoning: '',
-      contentRaw: '',
-      contentDisplay: '',
-      toolStatuses: [],
-    };
-    segments.push(segment);
-    segments.sort((a, b) => a.round - b.round);
-  }
-  return segment;
 }
 
 export function rebuildMessageBlocks(message: ChatMessage): ChatMessageBlock[] {
@@ -199,94 +210,6 @@ export function rebuildMessageBlocks(message: ChatMessage): ChatMessageBlock[] {
 
   message.blocks = blocks;
   return blocks;
-}
-
-// @deprecated 旧函数，保留兼容
-export function rebuildMessageSegmentsFromContent(message: ChatMessage): ChatRoundSegment[] {
-  const text = message.content || '';
-  if (!text) {
-    message.segments = [];
-    return message.segments;
-  }
-
-  const isLoopMessage = text.trimStart().startsWith(LOOP_HEADER);
-
-  if (isLoopMessage) {
-    return parseLoopMessageSegments(message, text);
-  }
-
-  const hasAnyMarker = /(?<!\/)@(?:Continue|Finish|Missing)@/.test(text);
-  if (!hasAnyMarker) {
-    const displayContent = stripControlMarkers(text);
-    const segment: ChatRoundSegment = {
-      round: 1,
-      reasoning: '',
-      contentRaw: text,
-      contentDisplay: displayContent,
-      toolStatuses: [],
-    };
-    if (message.toolStatuses?.length) {
-      segment.toolStatuses = [...message.toolStatuses];
-    }
-    message.segments = [segment];
-    return message.segments;
-  }
-
-  return parseLoopMessageSegments(message, text);
-}
-
-function parseLoopMessageSegments(message: ChatMessage, text: string): ChatRoundSegment[] {
-  // 去掉 @Loop@ 头（可能在开头带空白，仅未转义的）
-  let body = text.replace(/^\s*@Loop@\s*/, '');
-
-  // 去掉末尾的 @Finish@（可能前后带空白，仅未转义的）
-  body = body.replace(/(?<!\/)@Finish@\s*$/, '');
-
-  // 按未转义的 @Continue@ 或 @Missing@ 切分
-  // 新格式为前后包裹的闭合标记，可以精确切分
-  // 转义标记 /@XXX@ 不参与切分，保留为普通文本
-  // split 会去掉标记本身，各段即为每轮正文
-  const parts = body.split(/(?<!\/)@(?:Continue|Missing)@/);
-
-  const segments: ChatRoundSegment[] = [];
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (!trimmed) {
-      continue;
-    }
-    segments.push({
-      round: segments.length + 1,
-      reasoning: '',
-      contentRaw: trimmed,
-      contentDisplay: trimmed,
-      toolStatuses: [],
-    });
-  }
-
-  // 兜底：切分后没有任何内容，作为单轮处理
-  if (segments.length === 0) {
-    const fallbackContent = stripControlMarkers(text);
-    segments.push({
-      round: 1,
-      reasoning: '',
-      contentRaw: text,
-      contentDisplay: fallbackContent,
-      toolStatuses: [],
-    });
-  }
-
-  // 绑定 toolStatuses 到对应轮次
-  if (message.toolStatuses?.length) {
-    for (const entry of message.toolStatuses) {
-      const target = segments.find((item) => item.round === entry.round);
-      if (target) {
-        target.toolStatuses.push(entry);
-      }
-    }
-  }
-
-  message.segments = segments;
-  return segments;
 }
 
 export function normalizeHistoryMessageIds(messages: ChatMessage[]) {

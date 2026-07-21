@@ -23,7 +23,7 @@ export function useDesktopFairyAPI() {
     return window.desktopFairy.getFilePaths();
   }
 
-  async function readBackendLog(lines = 500): Promise<BackendLogResult> {
+  async function readBackendLog(lines = 200): Promise<BackendLogResult> {
     if (!window.desktopFairy?.readBackendLog) {
       throw new Error('Electron bridge 不可用，请在桌面应用环境下使用此功能');
     }

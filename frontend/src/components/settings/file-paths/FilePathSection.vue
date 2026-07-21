@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { Copy, FolderOpen, RefreshCw } from '@lucide/vue';
-import { useDesktopFairyAPI } from '@/composables/useDesktopFairyAPI';
+import { useDesktopFairyAPI } from '@/api/useDesktopFairyAPI';
 import { copyText } from '@/utils/clipboard';
 import { UI_TIMING } from '@/config/uiConstants';
 import type { FilePathsResult } from '@/main';

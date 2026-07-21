@@ -18,10 +18,15 @@ export interface ChatMessageTiming {
 }
 
 // 1006 TOOL_STATUS / 1007 TOOL_RESULT 的 eventData 结构
+// toolCallId / toolName / toolArguments 仅在 TOOL_CALL / TOOL_RESULT 等 stage 有值，
+// 其余 stage（ROUND_START / ROUND_CONTINUE / *_LIMIT 等）为 null
 export interface ToolStatusEvent {
   round: number;
   stage: string;
   message: string;
+  toolCallId?: string | null;
+  toolName?: string | null;
+  toolArguments?: string | null;
 }
 
 export type ChatDirectiveMarker = '@Continue@' | '@Finish@' | '@Missing@';
@@ -42,14 +47,22 @@ export interface ChatMessageBlock {
   toolStatus?: ToolStatusEvent;
 }
 
-// 保留旧类型用于兼容过渡
-export interface ChatRoundSegment {
-  round: number;
-  reasoning: string;
-  contentRaw: string;
-  contentDisplay: string;
-  directive?: ChatDirectiveMarker;
-  toolStatuses: ToolStatusEvent[];
+// 1005 ERROR 事件的 eventData 结构
+// 对应后端 ModelStreamErrorEventVO
+export interface ModelStreamErrorEvent {
+  errorType: string;
+  message: string;
+  retryable: boolean;
+  partialOutput: boolean;
+  partialContent: string;
+}
+
+// 消息上记录的错误详情（从 1005 事件解析后挂载）
+export interface ChatMessageErrorInfo {
+  errorType: string;
+  message: string;
+  retryable: boolean;
+  partialOutput: boolean;
 }
 
 export interface ChatMessage {
@@ -63,8 +76,8 @@ export interface ChatMessage {
   toolStatuses?: ToolStatusEvent[];
   // 按事件顺序排列的消息块（reasoning / content / tool 交替）
   blocks?: ChatMessageBlock[];
-  // @deprecated 旧字段，保留兼容
-  segments?: ChatRoundSegment[];
+  // 流式错误详情（status === 'error' 时有值）
+  errorInfo?: ChatMessageErrorInfo;
 }
 
 export interface ChatHistoryPage {
@@ -189,6 +202,15 @@ export interface ChatModelConfig {
   model: string;
   temperature?: number;
   maxTokens?: number;
+}
+
+// 系统提示词分组
+export type SystemPromptSlot = 'default' | '1' | '2' | '3';
+
+export interface SystemPromptEntry {
+  id: SystemPromptSlot;
+  label: string;
+  content: string;
 }
 
 export interface SendChatOptions {

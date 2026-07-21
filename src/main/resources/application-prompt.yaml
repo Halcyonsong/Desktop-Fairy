@@ -40,7 +40,7 @@ app:
       6. 如果想要正常文本形式输出控制标识，请在前面添加转义字符，如：/@Continue@ /@Finish@
       6. 回答正文保持正常自然语言，不要解释控制标记本身
     max-rounds: 5
-    max-tool-calls: 8
+    max-tool-calls: 10
     max-duration-seconds: 60
 
 

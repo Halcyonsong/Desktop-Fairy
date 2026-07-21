@@ -20,6 +20,26 @@ const modelSourceStore = useModelSourceStore();
 const fairyChatStore = useFairyChatStore();
 const chatPreferencesStore = useChatPreferencesStore();
 
+const sessionSidebarRef = ref<InstanceType<typeof SessionSidebar> | null>(null);
+
+async function handleBatchDelete(sessionIds: string[]) {
+  let successCount = 0;
+  let failCount = 0;
+  const total = sessionIds.length;
+
+  for (let i = 0; i < sessionIds.length; i++) {
+    try {
+      await workbench.deleteSession(sessionIds[i]);
+      successCount++;
+    } catch {
+      failCount++;
+    }
+    sessionSidebarRef.value?.onBatchDeleteProgress(i + 1, total);
+  }
+
+  sessionSidebarRef.value?.onBatchDeleteDone(successCount, failCount);
+}
+
 const temporarySummary = computed(() => fairyChatStore.temporarySessionSummary);
 const sidebarSessions = computed(() => {
   const sessions = workbench.sessions.map((session) => ({
@@ -189,6 +209,7 @@ onMounted(() => {
         <AppShell>
           <template #sidebar>
             <SessionSidebar
+              ref="sessionSidebarRef"
               :sessions="sidebarSessions"
               :active-session-id="activeSessionId"
               :loading="workbench.loading"
@@ -197,6 +218,7 @@ onMounted(() => {
               @select="handleSidebarSelect"
               @rename="workbench.renameSession"
               @delete="workbench.deleteSession"
+              @batch-delete="handleBatchDelete"
               @refresh-temporary-session="handleRefreshTemporarySession"
               @switch-view="uiStore.switchView"
             />
@@ -235,6 +257,8 @@ onMounted(() => {
               :auto-focus="shouldAutoFocusComposer"
               :allow-empty-send="fairyChatStore.selected"
               :tool-call-enabled="chatPreferencesStore.toolCallEnabled"
+              :system-prompts="chatPreferencesStore.systemPrompts"
+              :selected-prompt-slot="chatPreferencesStore.selectedPromptSlot"
               @update:draft="fairyChatStore.selected ? fairyChatStore.setDraft($event) : workbench.setComposerDraft($event)"
               @send="handleComposerSend"
               @stop="handleComposerStop"
@@ -242,6 +266,8 @@ onMounted(() => {
               @select-model="modelSourceStore.selectChatModel"
               @update:temperature-input="modelSourceStore.setTemperatureInput"
               @update:max-tokens-input="modelSourceStore.setMaxTokensInput"
+              @update:selected-prompt-slot="chatPreferencesStore.setSelectedPromptSlot($event)"
+              @update-system-prompt="(id, patch) => chatPreferencesStore.updateSystemPrompt(id, patch)"
               @toggle-tool-call="chatPreferencesStore.toggleToolCallEnabled()"
             />
           </template>

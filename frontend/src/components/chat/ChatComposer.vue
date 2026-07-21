@@ -5,8 +5,8 @@ import ModelPicker from '@/components/chat/composer/ModelPicker.vue';
 import RuntimeSettingsPopover from '@/components/chat/composer/RuntimeSettingsPopover.vue';
 import { appConfig } from '@/config/appConfig';
 import { uiText } from '@/config/uiText';
-import { useVoskVoiceController } from '@/modules/useVoskVoiceController';
-import type { SelectableModelGroup } from '@/types/chat';
+import { useVoskVoiceController } from '@/modules/vosk/useVoskVoiceController';
+import type { SelectableModelGroup, SystemPromptEntry, SystemPromptSlot } from '@/types/chat';
 
 const props = defineProps<{
   sending: boolean;
@@ -17,6 +17,8 @@ const props = defineProps<{
   modelRequired: boolean;
   temperatureInput: string;
   maxTokensInput: string;
+  systemPrompts: SystemPromptEntry[];
+  selectedPromptSlot: SystemPromptSlot;
   autoFocus: boolean;
   allowEmptySend?: boolean;
   toolCallEnabled?: boolean;
@@ -30,6 +32,8 @@ const emit = defineEmits<{
   selectModel: [sourceCode: string, modelName: string];
   'update:temperature-input': [value: string];
   'update:max-tokens-input': [value: string];
+  'update:selected-prompt-slot': [value: SystemPromptSlot];
+  'update-system-prompt': [id: SystemPromptSlot, patch: Partial<Pick<SystemPromptEntry, 'label' | 'content'>>];
   'toggle-tool-call': [];
 }>();
 
@@ -43,8 +47,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const voiceInput = useVoskVoiceController({
   onFinalResult: (transcript) => {
     const current = props.draft;
-    const separator = current && !current.endsWith(' ') && !current.endsWith('\n') ? '' : '';
-    emit('update:draft', current + separator + transcript);
+    emit('update:draft', current + transcript);
   },
   onError: (error, message) => {
     if (error !== 'no-speech' && error !== 'aborted') {
@@ -178,9 +181,13 @@ watch(
               :open="settingsOpen"
               :temperature-input="temperatureInput"
               :max-tokens-input="maxTokensInput"
+              :system-prompts="systemPrompts"
+              :selected-prompt-slot="selectedPromptSlot"
               @toggle="toggleSettings"
               @update:temperature-input="emit('update:temperature-input', $event)"
               @update:max-tokens-input="emit('update:max-tokens-input', $event)"
+              @update:selected-prompt-slot="emit('update:selected-prompt-slot', $event)"
+              @update-system-prompt="(id, patch) => emit('update-system-prompt', id, patch)"
             >
               <template #icon>
                 <SlidersHorizontal :size="18" />

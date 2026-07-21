@@ -56,7 +56,7 @@ export function useMessageListController(options: MessageListControllerOptions) 
   );
 
   watch(
-    () => options.messages().map((message) => `${message.id}:${message.status}:${message.content.length}:${message.segments?.length ?? 0}`).join('|'),
+    () => options.messages().map((message) => `${message.id}:${message.status}:${message.content.length}`).join('|'),
     async () => {
       if (pendingSessionScrollToBottom.value) {
         pendingSessionScrollToBottom.value = false;

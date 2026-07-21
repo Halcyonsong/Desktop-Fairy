@@ -1,4 +1,4 @@
-import { chatApi } from '@/api/chatApi';
+import { chatApi } from '@/api';
 import { createEmptyForm, ensureAtLeastOneModelRow, toModelSourceForm, toModelSourceSavePayload } from '@/stores/modelSource/helpers';
 import type { ModelSourceDetail, ModelSourceListItem, ModelSourceTestResult } from '@/types/chat';
 import type { Ref } from 'vue';

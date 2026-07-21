@@ -59,7 +59,7 @@ public class ToolStreamingLoopSupport {
         );
         // 构建轮次开始事件
         Flux<ChatEventVO> startFlux = Flux.just(
-                buildToolStatusEvent(round, ToolChatStageEnum.ROUND_START.getCode(), "第 " + round + " 轮开始")
+                buildNullToolStatusEvent(round, ToolChatStageEnum.ROUND_START.getCode(), "第 " + round + " 轮开始")
         );
         String roundSystemPrompt = toolChatPromptSupport.buildRoundSystemPrompt(systemPrompt, runtimeState);
         // 构建本轮正式调用方法
@@ -102,16 +102,16 @@ public class ToolStreamingLoopSupport {
     // 检查是否超过限制
     private ChatEventVO resolveLimitEvent(ToolLoopRuntimeState runtimeState, int round) {
         if (runtimeState.exceedsRoundLimit(round)) {
-            return buildToolStatusEvent(round - 1, ToolChatStageEnum.ROUND_LIMIT.getCode(), "已达到最大轮次限制，停止继续处理。");
+            return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.ROUND_LIMIT.getCode(), "已达到最大轮次限制，停止继续处理。");
         }
         if (runtimeState.exceedsToolCallLimit()) {
-            return buildToolStatusEvent(round - 1, ToolChatStageEnum.TOOL_LIMIT.getCode(), "已达到最大工具调用次数限制，停止继续处理。");
+            return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.TOOL_LIMIT.getCode(), "已达到最大工具调用次数限制，停止继续处理。");
         }
         if (runtimeState.exceedsDurationLimit()) {
-            return buildToolStatusEvent(round - 1, ToolChatStageEnum.TIME_LIMIT.getCode(), "已达到最大执行时长限制，停止继续处理。");
+            return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.TIME_LIMIT.getCode(), "已达到最大执行时长限制，停止继续处理。");
         }
         if (runtimeState.exceedsMissingDirectiveLimit()) {
-            return buildToolStatusEvent(round - 1, ToolChatStageEnum.DIRECTIVE_LIMIT.getCode(), "连续多轮未输出控制标记，停止继续处理。");
+            return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.DIRECTIVE_LIMIT.getCode(), "连续多轮未输出控制标记，停止继续处理。");
         }
         return null;
     }
@@ -145,11 +145,11 @@ public class ToolStreamingLoopSupport {
                     prefixEvents.add(buildToolStatusEvent(
                             roundState.getRound(),
                             ToolChatStageEnum.TOOL_CALL.getCode(),
-                            "检测到工具调用: " + toolSummary
-                    ));
+                            "检测到工具调用",
+                            toolCall));
                 }
             } else {
-                prefixEvents.add(buildToolStatusEvent(
+                prefixEvents.add(buildNullToolStatusEvent(
                         roundState.getRound(),
                         ToolChatStageEnum.TOOL_CALL.getCode(),
                         "检测到工具调用"
@@ -191,6 +191,7 @@ public class ToolStreamingLoopSupport {
         runtimeState.setLatestToolSummary(roundState.getToolSummaryText());
 
         if (directive == ToolRoundDirectiveEnum.FINISH) {
+            runtimeState.setPreviousDirectiveMissing(false);
             return Flux.empty();
         }
 
@@ -219,17 +220,13 @@ public class ToolStreamingLoopSupport {
         }
 
         if (StringUtils.hasText(roundState.getToolSummaryText())) {
-            bridgeEvents.add(ChatEventVO.builder()
-                    .eventType(ChatEventTypeEnum.TOOL_RESULT.getValue())
-                    .eventData(ToolStatusEventVO.builder()
-                            .round(roundState.getRound())
-                            .stage(ToolChatStageEnum.TOOL_RESULT.getCode())
-                            .message(roundState.getToolSummaryText())
-                            .build())
-                    .build());
+            bridgeEvents.add(buildToolResultEvent(
+                    roundState.getRound(),
+                    roundState.getToolSummaryText()
+            ));
         }
 
-        bridgeEvents.add(buildToolStatusEvent(
+        bridgeEvents.add(buildNullToolStatusEvent(
                 roundState.getRound(),
                 ToolChatStageEnum.ROUND_CONTINUE.getCode(),
                 directive == ToolRoundDirectiveEnum.CONTINUE
@@ -249,16 +246,52 @@ public class ToolStreamingLoopSupport {
                 ));
     }
 
-    // 包装工具调用事件
-    private ChatEventVO buildToolStatusEvent(int round, String stage, String message) {
+    // 包装空工具调用事件
+    private ChatEventVO buildNullToolStatusEvent(int round, String stage, String message) {
         ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
                 .round(round)
                 .stage(stage)
                 .message(message)
+                .toolCallId(null)
+                .toolName(null)
+                .toolArguments(null)
                 .build();
 
         return ChatEventVO.builder()
                 .eventType(ChatEventTypeEnum.TOOL_STATUS.getValue())
+                .eventData(eventVO)
+                .build();
+    }
+
+    // 包装工具调用事件
+    private ChatEventVO buildToolStatusEvent(int round, String stage, String message, AssistantMessage.ToolCall toolCall) {
+        ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
+                .round(round)
+                .stage(stage)
+                .message(message)
+                .toolCallId(toolCall.id())
+                .toolName(toolCall.name())
+                .toolArguments(toolCall.arguments())
+                .build();
+
+        return ChatEventVO.builder()
+                .eventType(ChatEventTypeEnum.TOOL_STATUS.getValue())
+                .eventData(eventVO)
+                .build();
+    }
+
+    private ChatEventVO buildToolResultEvent(int round, String message) {
+        ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
+                .round(round)
+                .stage(ToolChatStageEnum.TOOL_RESULT.getCode())
+                .message(message)
+                .toolCallId(null)
+                .toolName(null)
+                .toolArguments(null)
+                .build();
+
+        return ChatEventVO.builder()
+                .eventType(ChatEventTypeEnum.TOOL_RESULT.getValue())
                 .eventData(eventVO)
                 .build();
     }
@@ -296,7 +329,7 @@ public class ToolStreamingLoopSupport {
     }
 
     private ChatEventVO buildDirectiveWarningEvent(int round) {
-        return buildToolStatusEvent(
+        return buildNullToolStatusEvent(
                 round,
                 ToolChatStageEnum.DIRECTIVE_WARNING.getCode(),
                 "本轮回答末尾未检测到 @Continue 或 @Finish，系统已追加 @Missing，并继续进入下一轮。"
@@ -311,7 +344,7 @@ public class ToolStreamingLoopSupport {
     }
 
     private ChatEventVO buildMissingDirectiveLimitEvent(int round) {
-        return buildToolStatusEvent(
+        return buildNullToolStatusEvent(
                 round,
                 ToolChatStageEnum.DIRECTIVE_LIMIT.getCode(),
                 "连续多轮未输出 @Continue 或 @Finish，系统已强制终止本次处理。"

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { Sparkles } from '@lucide/vue';
-import { loadPetDefinition } from '@/modules/fairy/petLoader';
-import { usePetPlayer } from '@/modules/fairy/usePetPlayer';
+import { loadPetDefinition } from '@/components/fairy/controllers/petLoader';
+import { usePetPlayer } from '@/components/fairy/controllers/usePetPlayer';
 import type { PetDefinition } from '@/types/pet';
 
 const props = withDefaults(

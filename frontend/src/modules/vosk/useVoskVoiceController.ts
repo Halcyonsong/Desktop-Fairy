@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { ensureModel, type DownloadProgress } from './vosk/voskModelManager';
+import { ensureModel, type DownloadProgress } from './voskModelManager';
 import { useLoggerStore } from '@/stores/loggerStore';
 import { VOSK_TIMING } from '@/config/uiConstants';
 

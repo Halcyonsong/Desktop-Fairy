@@ -1,6 +1,8 @@
 {
   "name": "desktop-fairy-workbench",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "description": "a desktop application for ai models",
+  "author": "Halcyonsong",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, LoaderCircle, MessageCircleMore, Mic, RefreshCw, SendHorizontal, Sparkles, Square } from '@lucide/vue';
 import { computed } from 'vue';
-import { useVoskVoiceController } from '@/modules/useVoskVoiceController';
+import { useVoskVoiceController } from '@/modules/vosk/useVoskVoiceController';
 
 interface FairySessionOption {
   sessionId: string;

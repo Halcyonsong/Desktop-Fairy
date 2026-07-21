@@ -1,5 +1,6 @@
 import { CHAT_EVENT, TOOL_STAGE } from '@/config/chatConstants';
 import {
+  parseModelStreamErrorEvent,
   parseToolStatusEvent,
   stripControlMarkers,
   toEventText,
@@ -178,14 +179,44 @@ export function handleStreamEvent(
     const timing = ensureTiming(assistantMessage);
     timing.completedAt ??= Date.now();
     assistantMessage.status = 'error';
-    assistantMessage.content += text ? `\n${text}` : '';
 
-    const round = currentRound(assistantMessage);
-    const existing = lastBlock(assistantMessage, 'content');
-    if (existing) {
-      updateLastBlock(assistantMessage, 'content', stripControlMarkers(existing.text + text));
+    // 解析 1005 错误事件的结构化数据
+    const errorEvent = parseModelStreamErrorEvent(event.eventData);
+
+    if (errorEvent) {
+      // 在消息上记录错误详情，供 UI 展示
+      assistantMessage.errorInfo = {
+        errorType: errorEvent.errorType,
+        message: errorEvent.message,
+        retryable: errorEvent.retryable,
+        partialOutput: errorEvent.partialOutput,
+      };
+
+      // 如果有部分输出内容，把 partialContent 作为正文展示
+      if (errorEvent.partialOutput && errorEvent.partialContent) {
+        const partialText = stripControlMarkers(errorEvent.partialContent);
+        assistantMessage.content += partialText;
+
+        const round = currentRound(assistantMessage);
+        const existing = lastBlock(assistantMessage, 'content');
+        if (existing) {
+          updateLastBlock(assistantMessage, 'content', stripControlMarkers(existing.text + partialText));
+        } else if (partialText.trim()) {
+          appendBlock(assistantMessage, { type: 'content', round, text: partialText });
+        }
+      }
     } else {
-      appendBlock(assistantMessage, { type: 'content', round, text: stripControlMarkers(text) });
+      // 兜底：eventData 不是结构化对象，按旧逻辑处理纯文本
+      const text = toEventText(event.eventData);
+      assistantMessage.content += text ? `\n${text}` : '';
+
+      const round = currentRound(assistantMessage);
+      const existing = lastBlock(assistantMessage, 'content');
+      if (existing) {
+        updateLastBlock(assistantMessage, 'content', stripControlMarkers(existing.text + text));
+      } else {
+        appendBlock(assistantMessage, { type: 'content', round, text: stripControlMarkers(text) });
+      }
     }
   }
 }

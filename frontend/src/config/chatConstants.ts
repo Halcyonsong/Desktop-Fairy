@@ -21,6 +21,22 @@ export const TOOL_STAGE = {
   toolResult: 'TOOL_RESULT',
 } as const;
 
+// 1005 ERROR 事件的 errorType 取值
+// 对应后端 ModelServiceErrorTypeEnum
+export const ERROR_TYPE = {
+  unauthorized: 'UNAUTHORIZED',
+  forbidden: 'FORBIDDEN',
+  notFound: 'NOT_FOUND',
+  rateLimit: 'RATE_LIMIT',
+  insufficientBalance: 'INSUFFICIENT_BALANCE',
+  timeout: 'TIMEOUT',
+  connectionReset: 'CONNECTION_RESET',
+  connectionFailed: 'CONNECTION_FAILED',
+  serverError: 'SERVER_ERROR',
+  badRequest: 'BAD_REQUEST',
+  unknown: 'UNKNOWN',
+} as const;
+
 // 正文尾部轮次控制标记（展示时裁掉，原始文本保留）
 // 新格式为前后包裹的闭合标记，可精确识别，避免与正文粘连
 export const TOOL_DIRECTIVE_MARKERS = ['@Continue@', '@Finish@', '@Missing@'] as const;

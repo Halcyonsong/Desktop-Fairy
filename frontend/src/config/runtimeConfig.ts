@@ -11,8 +11,6 @@ export const runtimeConfig = {
   appBrandName: import.meta.env.VITE_APP_BRAND_NAME?.trim() || 'Desktop Fairy',
   workbenchTitle: import.meta.env.VITE_APP_WORKBENCH_TITLE?.trim() || 'AI 工作台',
   workbenchSubtitle: import.meta.env.VITE_APP_WORKBENCH_SUBTITLE?.trim() || '本地 AI 工作台',
-  defaultModelLabel: import.meta.env.VITE_APP_DEFAULT_MODEL_LABEL?.trim() || '选择模型配置',
-  defaultModelHint: import.meta.env.VITE_APP_DEFAULT_MODEL_HINT?.trim() || '请先选择已保存的模型配置',
 } as const;
 
 export function resolveApiUrl(path: string) {

@@ -1,7 +1,10 @@
 package io.github.halcyonsong.common.exception;
 
+import io.github.halcyonsong.common.enums.ModelServiceErrorTypeEnum;
 import io.github.halcyonsong.common.enums.ResultCodeEnum;
 import io.github.halcyonsong.common.result.Result;
+import io.github.halcyonsong.common.support.ModelServiceErrorResolver;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
@@ -11,7 +14,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,7 +21,10 @@ import java.util.Map;
 
 @Slf4j
 @RestControllerAdvice
+@AllArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final ModelServiceErrorResolver modelServiceErrorResolver;
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
     public Result<?> handleValidationException(Exception exception) {
@@ -77,7 +82,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public Result<?> handleException(Exception exception) {
+        if (modelServiceErrorResolver.isModelServiceException(exception)) {
+            ModelServiceErrorTypeEnum errorType = modelServiceErrorResolver.resolve(exception);
+            log.warn("模型服务异常: type={}, message={}", errorType.getCode(), exception.getMessage());
+            return Result.error(ResultCodeEnum.SYSTEM_ERROR.getCode(), errorType.getMessage());
+        }
+
         log.error("系统发生未捕获异常", exception);
         return Result.error(ResultCodeEnum.SYSTEM_ERROR);
     }
+
 }

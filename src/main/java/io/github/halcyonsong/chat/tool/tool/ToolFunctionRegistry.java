@@ -10,10 +10,12 @@ public class ToolFunctionRegistry {
     private final Object[] toolFunctions;
 
     public ToolFunctionRegistry(BasicToolFunctions basicToolFunctions,
-                                DevToolFunctions devToolFunctions) {
+                                DevToolFunctions devToolFunctions,
+                                FileToolFunctions fileToolFunctions) {
         this.toolFunctions = new Object[]{
                 basicToolFunctions,
-                devToolFunctions
+                devToolFunctions,
+                fileToolFunctions
         };
     }
 

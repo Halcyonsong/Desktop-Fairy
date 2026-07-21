@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { chatApi } from '@/api/chatApi';
+import { chatApi } from '@/api';
 import type {
   LocalModelActionType,
   LocalModelTaskDetail,

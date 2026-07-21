@@ -1,4 +1,4 @@
- .session-sidebar {
+﻿ .session-sidebar {
   display: flex;
   height: 100%;
   flex-direction: column;
@@ -488,6 +488,21 @@
   grid-column: 1 / -1;
 }
 
+.settings-field--inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.settings-field--inline input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
 .settings-models__header {
   display: flex;
   align-items: center;
@@ -891,7 +906,7 @@
 }
 
 .session-modal__input:focus {
-  border-color: var(--color-accent, #5b7cff);
+  border-color: var(--color-accent);
 }
 
 .session-modal__actions {
@@ -922,7 +937,7 @@
 }
 
 .session-modal__button--primary {
-  background: var(--color-accent, #5b7cff);
+  background: var(--color-accent);
   color: #fff;
 }
 
@@ -931,8 +946,8 @@
 }
 
 .session-modal__button--danger {
-  background: #ef4444;
-  color: #fff;
+  background: var(--color-danger);
+  color: var(--color-accent-contrast);
 }
 
 .session-modal__button--danger:hover {

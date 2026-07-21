@@ -11,6 +11,7 @@ const activeTab = ref<'frontend' | 'backend'>('frontend');
 
 const {
   copyButtonTitle,
+  backendCopyButtonTitle,
   backendLogs,
   backendLogPath,
   backendLogLoading,
@@ -258,9 +259,9 @@ const stats = computed(() => ({
           <RefreshCw :size="14" :class="{ 'spin': backendLogLoading }" />
           <span>{{ backendLogLoading ? '加载中...' : '刷新日志' }}</span>
         </button>
-        <button class="log-viewer__btn" type="button" :disabled="!backendLogs" @click="copyBackendLogs">
+        <button class="log-viewer__btn" type="button" :disabled="!backendLogs" :title="backendCopyButtonTitle" @click="copyBackendLogs">
           <Filter :size="14" />
-          <span>复制全部</span>
+          <span>{{ backendCopyButtonTitle }}</span>
         </button>
       </div>
 

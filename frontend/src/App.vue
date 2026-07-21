@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, watch } from 'vue';
 import { LoaderCircle } from '@lucide/vue';
 import FloatingFairy from '@/components/fairy/FloatingFairy.vue';
@@ -57,7 +57,7 @@ watch(
 }
 
 .backend-connecting__spinner {
-  color: var(--color-accent, #5b7cff);
+  color: var(--color-accent);
   animation: spin 1.2s linear infinite;
 }
 

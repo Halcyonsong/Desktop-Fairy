@@ -1,5 +1,6 @@
 package io.github.halcyonsong.chat.stream.service.support.stream;
 
+import io.github.halcyonsong.common.enums.ModelServiceErrorTypeEnum;
 import lombok.Getter;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -13,6 +14,8 @@ public class ChatStreamState {
     private final AtomicBoolean interrupted = new AtomicBoolean(false);
     private final AtomicBoolean failed = new AtomicBoolean(false);
     private final AtomicReference<String> errorMessage = new AtomicReference<>("");
+    private final AtomicReference<ModelServiceErrorTypeEnum> errorType =
+            new AtomicReference<>(ModelServiceErrorTypeEnum.UNKNOWN);
     private final AtomicBoolean nullResultChunkLogged = new AtomicBoolean(false);
     private final AtomicBoolean assistantOutputStarted = new AtomicBoolean(false);
 

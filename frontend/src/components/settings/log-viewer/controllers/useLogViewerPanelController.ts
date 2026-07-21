@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
-import { useDesktopFairyAPI } from '@/composables/useDesktopFairyAPI';
+import { useDesktopFairyAPI } from '@/api/useDesktopFairyAPI';
 import { copyText } from '@/utils/clipboard';
 import { LOG_VIEWER, UI_TIMING } from '@/config/uiConstants';
 
@@ -24,6 +24,10 @@ export function useLogViewerPanelController(options: UseLogViewerPanelController
   const copyResetTimer = ref<number | null>(null);
   const COPY_FEEDBACK_DURATION_MS = UI_TIMING.copyFeedbackResetMs;
 
+  // 后端日志复制按钮独立反馈状态
+  const backendCopyButtonTitle = ref('复制全部');
+  const backendCopyResetTimer = ref<number | null>(null);
+
   const backendLogs = ref('');
   const backendLogPath = ref('');
   const backendLogLoading = ref(false);
@@ -43,6 +47,17 @@ export function useLogViewerPanelController(options: UseLogViewerPanelController
     copyResetTimer.value = window.setTimeout(() => {
       copyButtonTitle.value = '复制全部';
       copyResetTimer.value = null;
+    }, COPY_FEEDBACK_DURATION_MS);
+  }
+
+  function flashBackendCopyButton(success: boolean) {
+    if (backendCopyResetTimer.value !== null) {
+      window.clearTimeout(backendCopyResetTimer.value);
+    }
+    backendCopyButtonTitle.value = success ? '已复制！' : '复制失败';
+    backendCopyResetTimer.value = window.setTimeout(() => {
+      backendCopyButtonTitle.value = '复制全部';
+      backendCopyResetTimer.value = null;
     }, COPY_FEEDBACK_DURATION_MS);
   }
 
@@ -76,8 +91,8 @@ export function useLogViewerPanelController(options: UseLogViewerPanelController
   async function copyBackendLogs() {
     const text = backendLogs.value;
     await copyText(text, {
-      onSuccess: () => flashCopyButton(true),
-      onFail: () => flashCopyButton(false),
+      onSuccess: () => flashBackendCopyButton(true),
+      onFail: () => flashBackendCopyButton(false),
     });
   }
 
@@ -92,10 +107,15 @@ export function useLogViewerPanelController(options: UseLogViewerPanelController
       window.clearTimeout(copyResetTimer.value);
       copyResetTimer.value = null;
     }
+    if (backendCopyResetTimer.value !== null) {
+      window.clearTimeout(backendCopyResetTimer.value);
+      backendCopyResetTimer.value = null;
+    }
   });
 
   return {
     copyButtonTitle,
+    backendCopyButtonTitle,
     backendLogs,
     backendLogPath,
     backendLogLoading,

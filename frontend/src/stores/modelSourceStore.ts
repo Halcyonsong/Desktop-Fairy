@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import { chatApi } from '@/api/chatApi';
+import { chatApi } from '@/api';
 import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import {
   buildGroupedSources,

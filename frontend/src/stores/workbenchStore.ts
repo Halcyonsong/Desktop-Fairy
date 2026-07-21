@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { chatApi } from '@/api/chatApi';
+import { chatApi } from '@/api';
 import { uiText } from '@/config/uiText';
 import {
   bootstrapWorkbench,
@@ -89,8 +89,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     await deleteWorkbenchSession(state, { ...reasoning, sending }, loadSession, sessionId);
   }
 
-  async function sendMessage(question?: string) {
-    await sendWorkbenchMessage(state, { ...reasoning, sending }, refreshSessions, question);
+  async function sendMessage(question?: string, options?: { systemPromptOverride?: string }) {
+    await sendWorkbenchMessage(state, { ...reasoning, sending }, refreshSessions, question, options);
   }
 
   async function stopChat() {

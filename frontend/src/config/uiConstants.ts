@@ -35,5 +35,5 @@ export const VOSK_TIMING = {
 
 export const LOG_VIEWER = {
   /** 后端日志默认读取的行数 */
-  backendLogDefaultLines: 500,
+  backendLogDefaultLines: 200,
 } as const;

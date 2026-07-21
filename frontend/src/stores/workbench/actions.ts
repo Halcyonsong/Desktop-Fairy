@@ -1,4 +1,4 @@
-import { chatApi } from '@/api/chatApi';
+import { chatApi } from '@/api';
 import { uiText } from '@/config/uiText';
 import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
@@ -162,6 +162,7 @@ export async function sendWorkbenchMessage(
   reasoning: ReasoningController,
   refreshSessions: () => Promise<void>,
   question?: string,
+  options?: { systemPromptOverride?: string },
 ) {
   const source = question ?? state.composerDraft.value;
   const trimmedQuestion = source.trim();
@@ -211,7 +212,8 @@ export async function sendWorkbenchMessage(
     await chatApi.sendChat({
       sessionId,
       question: trimmedQuestion,
-      systemPrompt: chatPreferencesStore.systemPrompt,
+      // 优先使用调用方传入的 override（精灵窗口传空禁用），否则读 chatPreferencesStore
+      systemPrompt: options?.systemPromptOverride ?? chatPreferencesStore.activeSystemPrompt,
       model: modelSourceStore.selectedChatModelConfig,
       signal: abortController.signal,
       enableToolCalling: chatPreferencesStore.toolCallEnabled,

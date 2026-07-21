@@ -4,18 +4,20 @@ import FairyAvatar from '@/components/fairy/FairyAvatar.vue';
 import FairyBubble from '@/components/fairy/FairyBubble.vue';
 import FairyComposer from '@/components/fairy/FairyComposer.vue';
 import { useFairyBootstrap } from '@/components/fairy/controllers/useFairyBootstrap';
+import { useFairyBubbleController } from '@/components/fairy/controllers/useFairyBubbleController';
 import { useFairyComposerController } from '@/components/fairy/controllers/useFairyComposerController';
 import { useFairyConversationController } from '@/components/fairy/controllers/useFairyConversationController';
+import { useFairyDragController } from '@/components/fairy/controllers/useFairyDragController';
+import { useFairyIdleController } from '@/components/fairy/controllers/useFairyIdleController';
+import { useFairyMotionController } from '@/components/fairy/controllers/useFairyMotionController';
 import { useFairyMotionOrchestrator } from '@/components/fairy/controllers/useFairyMotionOrchestrator';
+import { useFairyMouseIgnoreController } from '@/components/fairy/controllers/useFairyMouseIgnoreController';
 import { useFairyVisibilityController } from '@/components/fairy/controllers/useFairyVisibilityController';
+import { useFairyWatcherOrchestrator } from '@/components/fairy/controllers/useFairyWatcherOrchestrator';
+import { loadPetDefinition } from '@/components/fairy/controllers/petLoader';
+import { usePetPlayer } from '@/components/fairy/controllers/usePetPlayer';
 import { uiText } from '@/config/uiText';
-import { loadPetDefinition } from '@/modules/fairy/petLoader';
-import { useFairyBubbleController } from '@/modules/fairy/useFairyBubbleController';
-import { useFairyDragController } from '@/modules/fairy/useFairyDragController';
-import { useFairyIdleController } from '@/modules/fairy/useFairyIdleController';
-import { useFairyMouseIgnoreController } from '@/modules/fairy/useFairyMouseIgnoreController';
-import { useFairyMotionController } from '@/modules/fairy/useFairyMotionController';
-import { usePetPlayer } from '@/modules/fairy/usePetPlayer';
+import { useBackendStatusStore } from '@/stores/backendStatusStore';
 import { useFairyChatStore } from '@/stores/fairyChatStore';
 import { useFairyStore } from '@/stores/fairyStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
@@ -31,6 +33,7 @@ const fairyStore = useFairyStore();
 const fairyChatStore = useFairyChatStore();
 const modelSourceStore = useModelSourceStore();
 const workbenchStore = useWorkbenchStore();
+const backendStatusStore = useBackendStatusStore();
 
 const pet = ref<PetDefinition | null>(null);
 const loading = ref(false);
@@ -232,6 +235,7 @@ function syncBubbleWithTemporaryChat() {
 const { ensureSessionListLoaded, ensureModelSourceLoaded } = useFairyBootstrap({
   workbenchStore,
   modelSourceStore,
+  backendStatusStore,
 });
 
 const {
@@ -421,203 +425,34 @@ void ensureSessionListLoaded();
 void ensureModelSourceLoaded();
 syncBubbleWithTemporaryChat();
 
-watch(
-  () => [fairyStore.enabled, fairyStore.petId] as const,
-  () => {
-    void ensurePetLoaded();
-  },
-  { immediate: true },
-);
-
-// 监听发送状态和流式阶段，切换精灵动作
-// 临时闲聊模式：按 streamPhase 精确切换 typing → thinking → replying → idle
-// 工作台模式：根据 sending 和 reasoning 状态切换
-// typing 阶段特殊处理：循环 3 次 typing 动作后再切换到下一阶段
-watch(
-  () => [
-    usingTemporaryChat.value,
-    fairyChatStore.streamPhase,
-    workbenchStore.sending,
-    workbenchStore.latestReasoningText,
-  ] as const,
-  ([isTemporaryChat, phase, isWorkbenchSending, workbenchReasoning], oldValues) => {
-    if (dragging.value) {
-      return;
-    }
-
-    // 判断当前阶段应该播放的动作
-    let targetAction: string;
-    if (isTemporaryChat) {
-      switch (phase) {
-        case 'typing':
-          targetAction = PET_ANIMATIONS.typing;
-          break;
-        case 'thinking':
-          targetAction = PET_ANIMATIONS.thinking;
-          break;
-        case 'replying':
-          targetAction = PET_ANIMATIONS.replying;
-          break;
-        case 'idle':
-        default:
-          targetAction = PET_ANIMATIONS.idle;
-          break;
-      }
-    } else if (isWorkbenchSending) {
-      if (workbenchReasoning) {
-        targetAction = PET_ANIMATIONS.thinking;
-      } else {
-        targetAction = PET_ANIMATIONS.replying;
-      }
-    } else {
-      targetAction = PET_ANIMATIONS.idle;
-    }
-
-    // typing 动作特殊处理：如果当前不是 typing，触发带 3 次循环的 typing
-    if (targetAction === PET_ANIMATIONS.typing && animationName.value !== PET_ANIMATIONS.typing) {
-      triggerTypingWithCycles();
-      return;
-    }
-
-    // 非 typing 动作直接切换
-    if (targetAction !== PET_ANIMATIONS.typing && animationName.value !== targetAction) {
-      safeSetAnimation(targetAction);
-    }
-  },
-);
-
-// 监听临时闲聊的错误状态：失败时触发 requestFailed 动作
-watch(
-  () => fairyChatStore.errorMessage,
-  (error) => {
-    if (!error) {
-      return;
-    }
-    safeSetAnimation(PET_ANIMATIONS.requestFailed);
-  },
-);
-
-watch(
-  () => fairyChatStore.draft,
-  () => {
-    if (temporaryChatContextActive.value) {
-      syncDraftFromStore();
-    }
-  },
-);
-
-watch(
-  () => fairyChatStore.selected,
-  (selected) => {
-    if (selected) {
-      selectedSessionId.value = fairyChatStore.temporaryChatOption.sessionId;
-      syncBubbleWithTemporaryChat();
-    }
-  },
-  { immediate: true },
-);
-
-watch(
-  () => fairyChatStore.latestAssistantPreview,
-  () => {
-    if (usingTemporaryChat.value && !dragging.value) {
-      syncBubbleWithTemporaryChat();
-    }
-  },
-  { immediate: true },
-);
-
-watch(
-  () => workbenchStore.sessions,
-  async (options) => {
-    if (!selectedSessionId.value && options.length > 0) {
-      selectedSessionId.value = options[0]?.sessionId ?? '';
-    }
-
-    if (usingTemporaryChat.value) {
-      return;
-    }
-
-    const exists = options.some((item) => item.sessionId === selectedSessionId.value);
-    if (!exists) {
-      selectedSessionId.value = options[0]?.sessionId ?? '';
-    }
-
-    if (selectedSessionId.value && !workbenchStore.activeSessionId) {
-      await workbenchStore.loadSession(selectedSessionId.value);
-    }
-  },
-  { immediate: true },
-);
-
-watch(
-  () => [workbenchStore.activeSessionId, selectedSessionId.value, fairyChatStore.selected] as const,
-  () => {
-    if (fairyChatStore.selected || workbenchStore.activeSessionId !== selectedSessionId.value) {
-      lastWorkbenchAssistantMessageId.value = '';
-      return;
-    }
-
-    lastWorkbenchAssistantMessageId.value = findLatestCompletedAssistantMessage(workbenchStore.messages)?.id ?? '';
-  },
-  { immediate: true },
-);
-
-watch(
-  () => fairyChatStore.temporarySessionSummary,
-  (session) => {
-    if (!session && usingTemporaryChat.value) {
-      selectedSessionId.value = workbenchStore.sessions[0]?.sessionId ?? '';
-    }
-  },
-);
-
-watch(
-  () => fairyChatStore.messages,
-  () => {
-    if (usingTemporaryChat.value && !dragging.value) {
-      syncBubbleWithTemporaryChat();
-    }
-  },
-  { deep: true, immediate: true },
-);
-
-watch(
-  () => workbenchStore.sending,
-  (sending, previousSending) => {
-    if (sending || !previousSending) {
-      return;
-    }
-
-    if (temporaryChatContextActive.value) {
-      return;
-    }
-
-    if (!workbenchStore.activeSessionId || workbenchStore.activeSessionId !== selectedSessionId.value) {
-      return;
-    }
-
-    const lastAssistantMessage = findLatestCompletedAssistantMessage(workbenchStore.messages);
-    const nextAssistantId = lastAssistantMessage?.id ?? '';
-    if (!nextAssistantId || nextAssistantId === lastWorkbenchAssistantMessageId.value) {
-      return;
-    }
-
-    lastWorkbenchAssistantMessageId.value = nextAssistantId;
-    showBubble(lastAssistantMessage!.content);
-    showComposer();
-  },
-);
-
-watch(
-  () => fairyChatStore.errorMessage,
-  (message) => {
-    if (message) {
-      showBubble(message);
-      showComposer();
-    }
-  },
-);
+// 全部 watcher 逻辑提取到 composable，减少主组件体积
+useFairyWatcherOrchestrator({
+  fairyStore,
+  fairyChatStore,
+  workbenchStore,
+  pet,
+  dragging,
+  selectedSessionId,
+  lastWorkbenchAssistantMessageId,
+  localDraft,
+  usingTemporaryChat,
+  temporaryChatContextActive,
+  idleChatEnabled,
+  animationName,
+  syncBubbleWithTemporaryChat,
+  syncDraftFromStore,
+  showBubble,
+  showComposer,
+  findLatestCompletedAssistantMessage,
+  ensurePetLoaded,
+  tryIdleChat,
+  markGlobalActivity,
+  PET_ANIMATIONS,
+  safeSetAnimation,
+  triggerTypingWithCycles,
+  setStatusMessage,
+  scheduleIdleCheck,
+});
 </script>
 
 <template>

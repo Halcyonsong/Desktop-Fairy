@@ -1,4 +1,4 @@
-import { chatApi } from '@/api/chatApi';
+import { chatApi } from '@/api';
 import { HISTORY_NO_MORE_CACHE_MS } from '@/config/chatConstants';
 import { uiText } from '@/config/uiText';
 import { findLastAssistantMessage } from '@/utils/chatMessages';

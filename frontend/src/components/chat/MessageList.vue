@@ -3,7 +3,6 @@ import { ChevronDown } from '@lucide/vue';
 import HistoryPullIndicator from '@/components/chat/HistoryPullIndicator.vue';
 import MessageRow from '@/components/chat/MessageRow.vue';
 import { useMessageListController } from '@/components/chat/controllers/useMessageListController';
-import { copyText } from '@/utils/clipboard';
 import { uiText } from '@/config/uiText';
 import type { ChatMessage } from '@/types/chat';
 
@@ -89,13 +88,11 @@ function statusText(status: ChatMessage['status']) {
           v-for="message in messages"
           :key="message.id"
           :message="message"
-          :reasoning-open="isReasoningOpen(message)"
           :speaker-label="speakerLabel(message.role)"
           :status-text="statusText(message.status)"
           :show-rollback="message.id === latestUserMessageId && isLatestRoundMessage(message)"
           :show-delete="message.id === latestAssistantMessageId && isLatestRoundMessage(message)"
           :sending="sending"
-          @toggle-reasoning="toggleReasoning(message)"
           @rollback="emit('rollbackLatestRound')"
           @delete="emit('deleteLatestRound')"
         />

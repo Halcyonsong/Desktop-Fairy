@@ -74,7 +74,8 @@ export function useFairyComposerController(options: UseFairyComposerControllerOp
     }
 
     localDraft.value = '';
-    await workbenchStore.sendMessage(question);
+    // 精灵窗口禁用系统提示词：传空让后端使用默认提示词
+    await workbenchStore.sendMessage(question, { systemPromptOverride: '' });
   }
 
   function handleStop() {
