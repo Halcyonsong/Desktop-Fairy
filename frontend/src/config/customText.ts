@@ -18,6 +18,28 @@ export const customText = {
     attachmentImage: '图片将通过多模态方式发送',
     dragDropHint: '拖放文件到此处添加为附件',
   },
+  folder: {
+    authorize: '授权工作目录',
+    selectFolder: '选择文件夹',
+    confirmTitle: '确认授权文件夹',
+    confirmWarning: '授权文件夹为风险操作，AI 将能够读取该文件夹中的文件内容。',
+    confirmPath: '文件夹路径',
+    confirmCancel: '取消',
+    confirmSubmit: '确认授权',
+    folderLimitReached: '已达到文件夹授权上限，如需继续请先移除一个文件夹',
+    barSummary: (folderCount: number, fileCount: number) => {
+      const parts: string[] = [];
+      if (folderCount > 0) parts.push(`${folderCount} 个文件夹`);
+      if (fileCount > 0) parts.push(`${fileCount} 个文件`);
+      return parts.length > 0 ? `已授权 ${parts.join(' · ')}` : '暂无授权';
+    },
+    barExpand: '展开查看授权列表',
+    barCollapse: '收起',
+    sectionFolders: '文件夹',
+    sectionFiles: '文件',
+    revoke: '撤销授权',
+    empty: '暂无授权文件或文件夹',
+  },
   session: {
     create: '新建对话',
     searchPlaceholder: '搜索会话',

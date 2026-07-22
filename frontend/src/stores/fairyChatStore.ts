@@ -84,6 +84,9 @@ function loadSnapshot(): TemporaryChatSnapshot {
   }
 }
 
+// 模块级引用：HMR 或重复初始化时用于移除旧的 storage 监听器，避免监听器叠加泄漏
+let storageEventHandler: ((event: StorageEvent) => void) | null = null;
+
 export const useFairyChatStore = defineStore('fairyChat', () => {
   const modelSourceStore = useModelSourceStore();
   const fairyStore = useFairyStore();
@@ -204,14 +207,20 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
       return;
     }
 
-    const handleStorage = (event: StorageEvent) => {
+    // HMR 或重复初始化场景下，先移除旧监听器避免叠加
+    if (storageEventHandler) {
+      window.removeEventListener('storage', storageEventHandler);
+      storageEventHandler = null;
+    }
+
+    storageEventHandler = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY) {
         return;
       }
       syncFromStorage();
     };
 
-    window.addEventListener('storage', handleStorage);
+    window.addEventListener('storage', storageEventHandler);
     syncInitialized.value = true;
   }
 
@@ -388,7 +397,7 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
         onEvent: (event) => {
           // 通过索引替换更新消息，确保 Vue 响应式系统检测到变化
           updateAssistantMessageById(assistantMessageId, (message) => {
-            handleStreamEvent(event, message, sessionId, () => {}, () => {}, {});
+            handleStreamEvent(event, message, sessionId, () => {}, () => {});
           });
           if (event.eventType === CHAT_EVENT.reasoning) {
             // 模型开始输出思考内容
@@ -517,7 +526,7 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     () => {
       persist();
     },
-    { deep: true },
+    { deep: false },
   );
 
   initializeSync();

@@ -68,9 +68,11 @@ public class SessionFileToolRuntimeFunctions {
 
         runtimeState.addPendingMediaAttachment(attachment);
         return """
-                image has been prepared for next-round visual input.
-                end this round with @Continue@ so the next round can use the image.
-                """.trim();
+        image has been prepared for next-round visual input.
+        you have not seen the actual image content in this round yet.
+        do not describe the image in this round.
+        call markContinue("image prepared for next round visual processing") if you still need to analyze it.
+        """.trim();
     }
 
     @Tool(description = "Read an authorized image through parser fallback in current session by fileReferenceId")

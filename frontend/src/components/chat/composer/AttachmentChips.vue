@@ -1,16 +1,27 @@
 <script setup lang="ts">
-import { FileText, FileType, FileImage, FileSpreadsheet, Presentation, X } from '@lucide/vue';
+import { FileText, FileType, FileImage, FileSpreadsheet, Presentation, Star, X } from '@lucide/vue';
+import { ref } from 'vue';
 import { customText } from '@/config/customText';
-import type { SessionFileReference } from '@/main';
+import type { SessionFileReference } from '@/types/electron';
+import { PREVIEWABLE_IMAGE_EXTENSIONS, PREVIEWABLE_TEXT_EXTENSIONS, getExtension, isPreviewableFile, isImageFile, formatFileSize } from '@/utils/fileUtils';
 
 const props = defineProps<{
   files: SessionFileReference[];
+  primaryAttachmentFileReferenceId?: string;
 }>();
 
 const emit = defineEmits<{
   remove: [fileReferenceId: string];
   preview: [file: SessionFileReference];
+  setPrimary: [fileReferenceId: string];
+  clearPrimary: [];
 }>();
+
+// 右键菜单状态
+const contextMenuOpen = ref(false);
+const contextMenuX = ref(0);
+const contextMenuY = ref(0);
+const contextMenuFile = ref<SessionFileReference | null>(null);
 
 // 根据扩展名或 contentType 判断文件类型图标
 function fileIcon(file: SessionFileReference) {
@@ -23,32 +34,58 @@ function fileIcon(file: SessionFileReference) {
   return FileText;
 }
 
-const PREVIEWABLE_IMAGE = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
-const PREVIEWABLE_TEXT = ['txt', 'md', 'json', 'csv', 'log', 'xml', 'yml', 'yaml', 'java', 'kt', 'js', 'ts', 'html', 'css', 'properties', 'sql'];
-
-function isPreviewable(file: SessionFileReference): boolean {
-  const ext = file.originalFileName.split('.').pop()?.toLowerCase() ?? '';
-  return PREVIEWABLE_IMAGE.includes(ext) || PREVIEWABLE_TEXT.includes(ext);
-}
-
-function getExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() ?? '';
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function isPrimary(file: SessionFileReference): boolean {
+  return props.primaryAttachmentFileReferenceId === file.fileReferenceId;
 }
 
 function fileTooltip(file: SessionFileReference): string {
-  const tips = [file.originalFileName, formatSize(file.fileSize)];
+  const tips = [file.originalFileName, formatFileSize(file.fileSize)];
   const ext = getExtension(file.originalFileName);
-  if (PREVIEWABLE_IMAGE.includes(ext)) tips.push(customText.composer.attachmentImage);
+  if (PREVIEWABLE_IMAGE_EXTENSIONS.includes(ext)) tips.push(customText.composer.attachmentImage);
   if (file.fileSize > 10 * 1024 * 1024) tips.push(customText.composer.attachmentLargeFile);
-  if (isPreviewable(file)) tips.push('点击预览');
+  if (isPreviewableFile(file.originalFileName)) tips.push('点击预览');
+  tips.push('右键设置主附件');
   return tips.join(' · ');
 }
+
+// 右键菜单
+function handleContextMenu(event: MouseEvent, file: SessionFileReference) {
+  event.preventDefault();
+  contextMenuFile.value = file;
+  contextMenuX.value = event.clientX;
+  contextMenuY.value = event.clientY;
+  contextMenuOpen.value = true;
+}
+
+function closeContextMenu() {
+  contextMenuOpen.value = false;
+  contextMenuFile.value = null;
+}
+
+function handleSetPrimary() {
+  if (contextMenuFile.value) {
+    emit('setPrimary', contextMenuFile.value.fileReferenceId);
+  }
+  closeContextMenu();
+}
+
+function handleClearPrimary() {
+  emit('clearPrimary');
+  closeContextMenu();
+}
+
+// 点击外部关闭菜单
+function handleOutsideClick(event: MouseEvent) {
+  const target = event.target as Node;
+  const menu = document.querySelector('.attachment-context-menu');
+  if (menu && !menu.contains(target)) {
+    closeContextMenu();
+  }
+}
+
+import { onMounted, onBeforeUnmount } from 'vue';
+onMounted(() => document.addEventListener('click', handleOutsideClick));
+onBeforeUnmount(() => document.removeEventListener('click', handleOutsideClick));
 </script>
 
 <template>
@@ -58,23 +95,53 @@ function fileTooltip(file: SessionFileReference): string {
         v-for="file in props.files"
         :key="file.fileReferenceId"
         class="attachment-chip"
-        :class="{ 'attachment-chip--clickable': isPreviewable(file) }"
+        :class="{
+          'attachment-chip--clickable': isPreviewableFile(file.originalFileName),
+          'attachment-chip--primary': isPrimary(file),
+        }"
         :title="fileTooltip(file)"
-        @click="isPreviewable(file) ? emit('preview', file) : undefined"
+        :tabindex="isPreviewableFile(file.originalFileName) ? 0 : undefined"
+        :role="isPreviewableFile(file.originalFileName) ? 'button' : undefined"
+        @click="isPreviewableFile(file.originalFileName) ? emit('preview', file) : undefined"
+        @keydown.enter="isPreviewableFile(file.originalFileName) ? emit('preview', file) : undefined"
+        @contextmenu="handleContextMenu($event, file)"
       >
+        <Star v-if="isPrimary(file)" :size="14" class="attachment-chip__primary-icon" fill="currentColor" />
         <component :is="fileIcon(file)" :size="14" class="attachment-chip__icon" />
         <span class="attachment-chip__name">{{ file.originalFileName }}</span>
-        <span class="attachment-chip__size">{{ formatSize(file.fileSize) }}</span>
+        <span class="attachment-chip__size">{{ formatFileSize(file.fileSize) }}</span>
         <button
           class="attachment-chip__remove"
           type="button"
           title="移除"
+          aria-label="移除附件"
           @click.stop="emit('remove', file.fileReferenceId)"
         >
           <X :size="12" />
         </button>
       </span>
     </TransitionGroup>
+
+    <!-- 右键菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenuOpen"
+        class="attachment-context-menu"
+        role="menu"
+        :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }"
+        @click.stop
+        @keydown.esc="closeContextMenu"
+      >
+        <button v-if="contextMenuFile && !isPrimary(contextMenuFile)" class="context-menu-item" type="button" role="menuitem" @click="handleSetPrimary">
+          <Star :size="14" />
+          <span>设为主附件</span>
+        </button>
+        <button v-if="contextMenuFile && isPrimary(contextMenuFile)" class="context-menu-item" type="button" role="menuitem" @click="handleClearPrimary">
+          <Star :size="14" />
+          <span>取消主附件</span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -113,6 +180,16 @@ function fileTooltip(file: SessionFileReference): string {
   background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
 }
 
+.attachment-chip--primary {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+}
+
+.attachment-chip__primary-icon {
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
 .attachment-chip__icon {
   flex-shrink: 0;
   color: var(--color-accent);
@@ -148,6 +225,48 @@ function fileTooltip(file: SessionFileReference): string {
 .attachment-chip__remove:hover {
   color: var(--color-danger, var(--color-text));
   background: color-mix(in srgb, var(--color-danger, var(--color-text)) 10%, transparent);
+}
+
+/* 右键菜单 */
+.attachment-context-menu {
+  position: fixed;
+  z-index: 10002;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.12));
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-accent);
+}
+
+.context-menu-item svg {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.context-menu-item:hover svg {
+  color: var(--color-accent);
 }
 
 /* 动画 */

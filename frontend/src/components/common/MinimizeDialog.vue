@@ -3,7 +3,7 @@ import { Inbox, Minimize2, PanelBottom } from '@lucide/vue';
 import { onUnmounted, ref, watch } from 'vue';
 import { customText } from '@/config/customText';
 import { useMinimizePreferencesStore } from '@/stores/minimizePreferencesStore';
-import type { MinimizeBehavior } from '@/main';
+import type { MinimizeBehavior } from '@/types/electron';
 
 const props = defineProps<{
   open: boolean;
@@ -120,7 +120,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-overlay, rgba(0, 0, 0, 0.3));
   backdrop-filter: blur(2px);
 }
 
@@ -130,7 +130,7 @@ onUnmounted(() => {
   border-radius: 12px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.15));
 }
 
 .minimize-dialog__header {

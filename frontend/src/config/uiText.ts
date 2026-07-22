@@ -1,3 +1,5 @@
+import type { ErrorType, ToolStage } from '@/types/chat';
+
 export const uiText = {
   composer: {
     placeholder: '输入消息，Enter 发送，Shift + Enter 换行',
@@ -19,17 +21,17 @@ export const uiText = {
     expand: '查看完整工具调用过程',
     collapse: '收起',
     stages: {
+      LOOP_START: '工具循环开始',
       ROUND_START: '轮次开始',
       TOOL_CALL: '检测到工具调用',
       ROUND_CONTINUE: '进入下一轮',
-      DIRECTIVE_WARNING: '轮次标记缺失',
-      DIRECTIVE_LIMIT: '连续缺失，强制终止',
+      ROUND_FINISH: '模型已结束本轮',
       ROUND_LIMIT: '达到最大轮次',
       TOOL_LIMIT: '达到工具调用上限',
       TIME_LIMIT: '达到执行时长上限',
       TOOL_RESULT: '工具结果',
       MEDIA_REQUEST_START: '正在获取图片并等待模型处理',
-    },
+    } satisfies Record<ToolStage, string>,
   },
   session: {
     operations: '会话操作',
@@ -55,6 +57,7 @@ export const uiText = {
     rollbackLatestRound: '回退并回填输入框',
     deleteLatestRound: '删除最后一轮',
     refreshHistory: '重新拉取当前会话历史',
+    historyRefreshed: '历史已刷新',
     backToBottom: '回到底部',
     untitledSession: '未选择会话',
   },
@@ -68,6 +71,7 @@ export const uiText = {
   errors: {
     initFailed: '初始化失败',
     refreshHistoryFailed: '刷新历史失败',
+    createSessionFailed: '创建会话失败',
     loadHistoryFailed: '历史消息加载失败',
     sendFailed: '发送失败',
     streamUnsupported: '当前环境不支持读取流式响应',
@@ -86,13 +90,14 @@ export const uiText = {
       SERVER_ERROR: '服务不可用',
       BAD_REQUEST: '请求参数异常',
       UNKNOWN: '未知错误',
-    } as Record<string, string>,
+    } satisfies Record<ErrorType, string>,
     retry: '重试',
     partialOutputHint: '以上内容可能不完整',
   },
   backend: {
     connecting: '正在连接后端服务...',
     connectingHint: '首次启动需要等待几秒钟，后端准备就绪后将自动恢复',
-    connectFailed: '后端服务连接失败，请重启应用',
+    reconnecting: '后端连接已断开',
+    reconnectingHint: '正在尝试重新连接后端服务，请稍候...',
   },
 } as const;

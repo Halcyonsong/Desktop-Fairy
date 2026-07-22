@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
   formula: string;
@@ -23,7 +23,11 @@ async function loadKatexRuntime() {
 
 const rendered = ref('');
 
+// 渲染请求令牌：每次发起渲染递增，await 后校验是否仍是最新请求，避免竞态与卸载后写入
+let renderToken = 0;
+
 async function renderFormula() {
+  const token = ++renderToken;
   const source = props.formula?.trim() ?? '';
   if (!source) {
     rendered.value = '';
@@ -32,6 +36,10 @@ async function renderFormula() {
 
   try {
     const katex = await loadKatexRuntime();
+    // await 期间若有新请求或组件已卸载，放弃本次写入
+    if (token !== renderToken) {
+      return;
+    }
     rendered.value = katex.renderToString(source, {
       throwOnError: false,
       displayMode: Boolean(props.block),
@@ -40,12 +48,20 @@ async function renderFormula() {
       trust: false,
     });
   } catch {
+    if (token !== renderToken) {
+      return;
+    }
     rendered.value = source;
   }
 }
 
 onMounted(() => {
   void renderFormula();
+});
+
+// 组件卸载时使进行中的渲染失效，避免 await 完成后写入已卸载组件的状态
+onBeforeUnmount(() => {
+  renderToken++;
 });
 
 watch(

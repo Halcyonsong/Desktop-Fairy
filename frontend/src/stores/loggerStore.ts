@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue';
 /**
  * 全局日志收集器
  *
- * 拦截 console.log/warn/error/debug，同时提供手动 log API
+ * 仅提供手动 log API，不拦截 console
  * 所有日志存入内存环形缓冲区，设置页"日志查看"模块读取展示
  *
  * 持久化：最近 500 条日志保存到 localStorage，刷新页面后仍可查看
@@ -32,6 +32,9 @@ const PERSIST_MAX = 500;           // 持久化到 localStorage 的最大条数
 const STORAGE_KEY = 'desktop-fairy-logs';
 const PERSIST_DEBOUNCE_MS = 1000;   // 防抖写入间隔
 
+// 模块级变量：HMR 重建时旧 timer 可被新 store 实例清除，避免定时器泄漏
+let persistTimer: number | null = null;
+
 export const useLoggerStore = defineStore('logger', () => {
   const entries = ref<LogEntry[]>([]);
   const nextId = ref(1);
@@ -45,7 +48,7 @@ export const useLoggerStore = defineStore('logger', () => {
       const parsed = JSON.parse(stored) as { entries: LogEntry[]; nextId: number };
       if (parsed?.entries?.length) {
         entries.value = parsed.entries;
-        nextId.value = parsed.nextId ?? (parsed.entries[parsed.entries.length - 1].id + 1);
+        nextId.value = typeof parsed.nextId === 'number' ? parsed.nextId : (parsed.entries[parsed.entries.length - 1].id + 1);
         console.log(`[loggerStore] 从 localStorage 恢复 ${entries.value.length} 条日志`);
       }
     }
@@ -54,7 +57,6 @@ export const useLoggerStore = defineStore('logger', () => {
   }
 
   // ===== 防抖写入 localStorage =====
-  let persistTimer: number | null = null;
   function schedulePersist() {
     if (persistTimer !== null) {
       window.clearTimeout(persistTimer);

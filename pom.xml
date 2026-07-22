@@ -5,7 +5,7 @@
 
     <groupId>io.github.halcyonsong</groupId>
     <artifactId>Desktop-Fairy</artifactId>
-    <version>0.3.0</version>
+    <version>0.3.1</version>
     <name>Desktop-Fairy</name>
     <description>a desktop application for ai models</description>
 

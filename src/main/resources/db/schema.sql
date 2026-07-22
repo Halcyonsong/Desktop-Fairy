@@ -88,3 +88,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_session_file_reference_session_path
 
 CREATE INDEX IF NOT EXISTS idx_session_file_reference_session_id
     ON session_file_reference (session_id);
+
+create table if not exists session_folder_reference (
+                                                        id integer primary key autoincrement,
+                                                        folder_reference_id text not null,
+                                                        session_id text not null,
+                                                        absolute_path text not null,
+                                                        folder_name text not null,
+                                                        status text not null,
+                                                        create_time text not null,
+                                                        update_time text not null
+);
+
+create unique index if not exists uk_session_folder_reference_folder_reference_id
+    on session_folder_reference(folder_reference_id);
+
+create unique index if not exists uk_session_folder_reference_session_path
+    on session_folder_reference(session_id, absolute_path);
+
+create index if not exists idx_session_folder_reference_session_id
+    on session_folder_reference(session_id);

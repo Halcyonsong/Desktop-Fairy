@@ -12,6 +12,7 @@ import io.github.halcyonsong.chat.stream.pojo.vo.ChatEventVO;
 import io.github.halcyonsong.chat.stream.service.support.options.ModelConfigResolver;
 import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamLifecycleSupport;
 import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamState;
+import io.github.halcyonsong.chat.tool.pojo.dto.ToolChatRequestDTO;
 import io.github.halcyonsong.chat.tool.service.ToolChatService;
 import io.github.halcyonsong.chat.tool.service.support.*;
 import io.github.halcyonsong.chat.tool.service.support.status.ToolLoopRuntimeState;
@@ -37,7 +38,8 @@ public class ToolChatServiceImpl implements ToolChatService {
     private final ToolChatProperties toolChatProperties;
 
     @Override
-    public Flux<ChatEventVO> chat(ChatRequestDTO chatRequestDTO) {
+    public Flux<ChatEventVO> chat(ToolChatRequestDTO toolChatRequestDTO) {
+        ChatRequestDTO chatRequestDTO = toolChatRequestDTO.getRequest();
         ChatDTO chatDTO = chatRequestDTO.getChat();
         ModelConfig modelConfig = modelConfigResolver.resolve(chatRequestDTO.getModel());
 
@@ -60,9 +62,13 @@ public class ToolChatServiceImpl implements ToolChatService {
         // 基础系统提示词，系统+用户设定
         String baseSystemPrompt = toolChatPromptSupport.resolveSystemPrompt(sessionId, chatRequestDTO.getSystemPrompt());
         // 拼接会话文件提示词
-        String fileAwareSystemPrompt = toolChatPromptSupport.appendSessionFilePrompt(
+        String fileAwareSystemPrompt = toolChatPromptSupport.appendSessionFilePrompt(baseSystemPrompt);
+        // 拼接当前请求文件提示词
+        String requestAttachmentAwarePrompt = toolChatPromptSupport.appendCurrentAttachmentPrompt(
                 sessionId,
-                baseSystemPrompt
+                fileAwareSystemPrompt,
+                toolChatRequestDTO.getAttachmentFileReferenceIds(),
+                toolChatRequestDTO.getPrimaryAttachmentFileReferenceId()
         );
         // 调用开始前设置调用限制和记录状态工具
         ToolLoopRuntimeState runtimeState = new ToolLoopRuntimeState(
@@ -72,7 +78,7 @@ public class ToolChatServiceImpl implements ToolChatService {
         );
         // 拼接运行时约束提示词
         String systemPrompt = toolChatPromptSupport.appendRuntimeConstraintPrompt(
-                fileAwareSystemPrompt,
+                requestAttachmentAwarePrompt,
                 runtimeState.getMaxRounds(),
                 runtimeState.getMaxToolCalls(),
                 runtimeState.getMaxDurationSeconds()

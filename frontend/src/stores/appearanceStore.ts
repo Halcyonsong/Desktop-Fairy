@@ -47,6 +47,9 @@ function loadSnapshot(): AppearanceSnapshot {
   }
 }
 
+// 模块级引用：HMR 或重复初始化时用于移除旧的 storage 监听器，避免监听器叠加泄漏
+let storageEventHandler: ((event: StorageEvent) => void) | null = null;
+
 export const useAppearanceStore = defineStore('appearance', () => {
   const snapshot = loadSnapshot();
   const globalSerifFontEnabled = ref(snapshot.globalSerifFontEnabled);
@@ -104,14 +107,20 @@ export const useAppearanceStore = defineStore('appearance', () => {
       return;
     }
 
-    const handleStorage = (event: StorageEvent) => {
+    // HMR 或重复初始化场景下，先移除旧监听器避免叠加
+    if (storageEventHandler) {
+      window.removeEventListener('storage', storageEventHandler);
+      storageEventHandler = null;
+    }
+
+    storageEventHandler = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY) {
         return;
       }
       syncFromStorage();
     };
 
-    window.addEventListener('storage', handleStorage);
+    window.addEventListener('storage', storageEventHandler);
     syncInitialized.value = true;
   }
 

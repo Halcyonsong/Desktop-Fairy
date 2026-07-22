@@ -3,7 +3,21 @@ import { computed, ref } from 'vue';
 import { useSessionFileStore } from '@/stores/sessionFileStore';
 import type { SystemPromptEntry, SystemPromptSlot } from '@/types/chat';
 
-const STORAGE_KEY = 'desktop-fairy.chat-preferences.v1';
+export const STORAGE_KEY = 'desktop-fairy.chat-preferences.v1';
+
+// 运行时校验：SystemPromptEntry.id 仅允许 '1' | '2' | '3'
+// （'default' 仅用于 selectedPromptSlot，不作为条目 id）
+function isValidSystemPromptSlot(id: unknown): id is SystemPromptSlot {
+  return typeof id === 'string' && (id === '1' || id === '2' || id === '3');
+}
+
+// 解析条目 id：优先使用原值，不合法时回退到 fallback，fallback 也不合法时回退到 '1'
+function resolveSystemPromptSlot(id: unknown, fallback: string): SystemPromptSlot {
+  if (isValidSystemPromptSlot(id)) {
+    return id;
+  }
+  return isValidSystemPromptSlot(fallback) ? fallback : '1';
+}
 
 // 默认的三组自定义提示词（空内容）
 function defaultSystemPrompts(): SystemPromptEntry[] {
@@ -40,7 +54,7 @@ function migrateSnapshot(parsed: Partial<ChatPreferencesSnapshot>): ChatPreferen
   // 读取新版字段
   const systemPrompts = Array.isArray(parsed.systemPrompts)
     ? parsed.systemPrompts.map((entry, index) => ({
-        id: (entry?.id ?? String(index + 1)) as SystemPromptSlot,
+        id: resolveSystemPromptSlot(entry?.id, String(index + 1)),
         label: typeof entry?.label === 'string' ? entry.label : '',
         content: typeof entry?.content === 'string' ? entry.content : '',
       })).slice(0, 3)
@@ -49,7 +63,7 @@ function migrateSnapshot(parsed: Partial<ChatPreferencesSnapshot>): ChatPreferen
   // 补齐不足 3 组的情况
   while (systemPrompts.length < 3) {
     systemPrompts.push({
-      id: String(systemPrompts.length + 1) as SystemPromptSlot,
+      id: resolveSystemPromptSlot(String(systemPrompts.length + 1), '1'),
       label: '',
       content: '',
     });

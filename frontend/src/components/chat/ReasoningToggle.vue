@@ -9,7 +9,7 @@ defineProps<{
 </script>
 
 <template>
-  <button class="reasoning-inline-toggle" :class="{ 'reasoning-inline-toggle--open': open }" type="button" :title="title">
+  <button class="reasoning-inline-toggle" :class="{ 'reasoning-inline-toggle--open': open }" type="button" :title="title" :aria-expanded="open">
     <span v-if="label">{{ label }}</span>
     <ChevronDown :size="14" />
   </button>

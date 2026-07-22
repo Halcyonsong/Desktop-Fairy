@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld('desktopFairy', {
     ipcRenderer.removeAllListeners('backend:ready');
     ipcRenderer.on('backend:ready', () => callback?.());
   },
+  // 后端断开通知：主进程检测到后端不可用时发送
+  onBackendNotReady: (callback) => {
+    ipcRenderer.removeAllListeners('backend:not-ready');
+    ipcRenderer.on('backend:not-ready', () => callback?.());
+  },
 
   // 系统信息
   getFilePaths: () => ipcRenderer.invoke('system:get-file-paths'),
@@ -42,6 +47,8 @@ contextBridge.exposeInMainWorld('desktopFairy', {
 
   // 文件选择对话框（返回路径数组，支持多选）
   showOpenFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+  // 文件夹选择对话框（返回单个文件夹路径）
+  showOpenFolderDialog: () => ipcRenderer.invoke('dialog:open-folder'),
   // 截图捕获（options: { hideWindow?: boolean }，返回临时文件路径或 null）
   captureScreenshot: (options) => ipcRenderer.invoke('screenshot:capture', options),
   // 读取文件为 Data URL（用于图片预览）

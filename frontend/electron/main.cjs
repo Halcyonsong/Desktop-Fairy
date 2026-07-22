@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, dialog, desktopCapturer, ipcMain, nativeImage, screen, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, desktopCapturer, ipcMain, nativeImage, screen, session, powerMonitor } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -17,6 +17,9 @@ const FAIRY_WINDOW_MODE = 'fairy';
 
 let backendProcess = null;
 let backendReady = false;
+let backendRestartCount = 0;
+let backendRestartTimer = null;
+let healthMonitorTimer = null;
 let mainWindow = null;
 let fairyWindow = null;
 let tray = null;
@@ -284,7 +287,7 @@ function checkBackendHealth() {
   });
 }
 
-async function waitForBackendReady(timeoutMs = 30000, intervalMs = 300) {
+async function waitForBackendReady(timeoutMs = 60000, intervalMs = 500) {
   const start = Date.now();
   let lastError = null;
 
@@ -301,11 +304,58 @@ async function waitForBackendReady(timeoutMs = 30000, intervalMs = 300) {
   throw lastError || new Error('Backend did not become ready in time');
 }
 
-async function startBackend() {
+// 通知前端后端状态变化
+function notifyBackendStatus(ready) {
+  const windows = BrowserWindow.getAllWindows();
+  for (const win of windows) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(ready ? 'backend:ready' : 'backend:not-ready');
+    }
+  }
+}
+
+// 启动持续健康监控（后端 ready 后调用）
+function startHealthMonitor() {
+  if (healthMonitorTimer) {
+    clearInterval(healthMonitorTimer);
+  }
+
+  let consecutiveFailures = 0;
+
+  healthMonitorTimer = setInterval(async () => {
+    if (isQuitting) return;
+
+    try {
+      await checkBackendHealth();
+      consecutiveFailures = 0;
+
+      // 如果之前断开了，现在恢复了
+      if (!backendReady) {
+        backendReady = true;
+        notifyBackendStatus(true);
+      }
+    } catch {
+      consecutiveFailures++;
+
+      // 连续 3 次失败才判定断开（避免网络抖动误判）
+      if (consecutiveFailures >= 3 && backendReady) {
+        backendReady = false;
+        notifyBackendStatus(false);
+      }
+    }
+  }, 15000); // 每 15 秒检查一次
+}
+
+async function startBackend(isRestart = false) {
   const projectRoot = resolveProjectRoot();
   const resourcesRoot = resolveResourcesRoot(projectRoot);
   const javaExecutable = resolveJavaExecutable(resourcesRoot);
   const backendJarPath = resolveBackendJarPath(resourcesRoot);
+
+  if (isRestart) {
+    backendReady = false;
+    notifyBackendStatus(false);
+  }
 
   backendProcess = spawn(javaExecutable, ['-jar', backendJarPath], {
     cwd: resourcesRoot,
@@ -315,30 +365,49 @@ async function startBackend() {
 
   backendProcess.once('exit', (code, signal) => {
     backendProcess = null;
-    if (!isQuitting) {
-      const reason = signal ? `signal ${signal}` : `code ${code}`;
-      dialog.showErrorBox('Backend stopped', `Desktop Fairy backend exited unexpectedly (${reason}).`);
+
+    if (isQuitting) return;
+
+    const reason = signal ? `signal ${signal}` : `code ${code}`;
+    console.error(`[Backend] Process exited unexpectedly (${reason})`);
+
+    // 自动重启（最多 5 次，间隔递增）
+    if (backendRestartCount < 5) {
+      backendRestartCount++;
+      const delay = Math.min(2000 * backendRestartCount, 15000); // 2s, 4s, 6s, 8s, 10s
+      console.log(`[Backend] Auto-restarting in ${delay}ms (attempt ${backendRestartCount}/5)...`);
+
+      backendRestartTimer = setTimeout(() => {
+        startBackend(true).catch((err) => {
+          console.error('[Backend] Auto-restart failed:', err);
+        });
+      }, delay);
+    } else {
+      dialog.showErrorBox(
+        'Backend crashed',
+        'Desktop Fairy backend has crashed multiple times and could not be restarted.\nPlease restart the application manually.',
+      );
       app.quit();
     }
   });
 
   // 不再 await：后台轮询后端就绪状态，ready 后通过 IPC 通知前端
-  // 这样窗口可以立即创建显示，用户不用等待后端启动
   waitForBackendReady()
     .then(() => {
       backendReady = true;
-      // 通知所有窗口的后端已就绪
-      const windows = BrowserWindow.getAllWindows();
-      for (const win of windows) {
-        if (!win.isDestroyed()) {
-          win.webContents.send('backend:ready');
-        }
-      }
+      backendRestartCount = 0; // 重启成功后重置计数
+      notifyBackendStatus(true);
+      startHealthMonitor(); // 启动持续健康监控
     })
     .catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      dialog.showErrorBox('Backend startup failed', `Desktop Fairy backend failed to start within 30 seconds.\n${message}`);
-      app.quit();
+      if (!isQuitting) {
+        const message = error instanceof Error ? error.message : String(error);
+        dialog.showErrorBox(
+          'Backend startup failed',
+          `Desktop Fairy backend failed to start within 60 seconds.\n${message}`,
+        );
+        app.quit();
+      }
     });
 }
 
@@ -679,6 +748,19 @@ function registerIpc() {
     return result.filePaths;  // 返回路径数组
   });
 
+  // ===== 文件夹选择对话框 =====
+  ipcMain.handle('dialog:open-folder', async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog({
+      title: '选择文件夹',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];  // 返回单个文件夹路径
+  });
+
   // ===== 截图区域选择捕获 =====
   let screenshotOverlayWindow = null;
 
@@ -1011,6 +1093,42 @@ async function bootstrap() {
 
 app.whenReady().then(bootstrap);
 
+// 系统睡眠/唤醒处理
+powerMonitor.on('resume', () => {
+  console.log('[PowerMonitor] System resumed from sleep');
+
+  // 如果后端进程已不存在，尝试重启
+  if (!backendProcess && !isQuitting) {
+    console.log('[PowerMonitor] Backend process is gone, restarting...');
+    backendReady = false;
+    notifyBackendStatus(false);
+    startBackend(true).catch((err) => {
+      console.error('[PowerMonitor] Backend restart after resume failed:', err);
+    });
+  } else if (backendProcess && !backendReady) {
+    // 后端进程存在但还未 ready，主动检查一次
+    checkBackendHealth()
+      .then(() => {
+        backendReady = true;
+        notifyBackendStatus(true);
+      })
+      .catch(() => {
+        // 后端可能还在恢复，保持 not-ready 状态，健康监控会持续检查
+        console.log('[PowerMonitor] Backend not yet responsive after resume, waiting...');
+      });
+  }
+});
+
+// 系统即将睡眠
+powerMonitor.on('suspend', () => {
+  console.log('[PowerMonitor] System suspending to sleep');
+  // 暂停健康监控，避免睡眠期间误判
+  if (healthMonitorTimer) {
+    clearInterval(healthMonitorTimer);
+    healthMonitorTimer = null;
+  }
+});
+
 app.on('before-quit', () => {
   isQuitting = true;
   fairyDragController?.stopTimer();
@@ -1018,6 +1136,14 @@ app.on('before-quit', () => {
   persistFairyPreferences();
   tray?.destroy();
   tray = null;
+  if (healthMonitorTimer) {
+    clearInterval(healthMonitorTimer);
+    healthMonitorTimer = null;
+  }
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer);
+    backendRestartTimer = null;
+  }
   if (backendProcess) {
     backendProcess.kill();
   }

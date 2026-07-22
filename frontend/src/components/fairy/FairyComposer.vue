@@ -44,7 +44,7 @@ const emit = defineEmits<{
 const voiceInput = useVoskVoiceController({
   onFinalResult: (transcript) => {
     const current = props.localDraft;
-    const separator = current && !current.endsWith(' ') ? '' : '';
+    const separator = current && !current.endsWith(' ') ? ' ' : '';
     emit('draftUpdate', current + separator + transcript);
   },
   onError: (error, message) => {

@@ -17,6 +17,7 @@ import io.github.halcyonsong.chat.sum.service.ChatSummaryService;
 import io.github.halcyonsong.common.enums.ResultCodeEnum;
 import io.github.halcyonsong.common.exception.BusinessException;
 import io.github.halcyonsong.sessionfile.service.SessionFileService;
+import io.github.halcyonsong.sessionfolder.service.SessionFolderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -40,6 +41,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     private final ChatSessionConvertor chatSessionConvertor;
     private final ChatHistoryConvertor chatHistoryConvertor;
     private final SessionFileService sessionFileService;
+    private final SessionFolderService sessionFolderService;
 
     @Override // 创建会话方法
     public ChatSessionVO createSession() {
@@ -94,11 +96,16 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         }
 
         boolean deleted = chatSessionStore.deleteSession(sessionId);
+        sessionRelatedDeleteSupport(sessionId);
+        return deleted;
+    }
+
+    private void sessionRelatedDeleteSupport(String sessionId) {
         chatSessionMemorySupport.clearMemoryWindow(sessionId);
         chatHistoryStore.deleteHistory(sessionId);
         chatSummaryService.clearSessionSummaries(sessionId);
         sessionFileService.deleteBySessionId(sessionId);
-        return deleted;
+        sessionFolderService.deleteBySessionId(sessionId);
     }
 
     @Override // 重命名会话方法

@@ -13,8 +13,8 @@
 }
 
 .app-shell__main {
-  display: grid;
-  grid-template-rows: 70px minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   height: 100vh;
   background: var(--color-surface);

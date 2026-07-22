@@ -1,7 +1,13 @@
+import type { CHAT_EVENT, ERROR_TYPE, TOOL_STAGE } from '@/config/chatConstants';
+
 export type ChatRole = 'user' | 'assistant';
 export type ChatMessageStatus = 'completed' | 'interrupted' | 'error' | 'sending' | 'streaming';
-export type ChatEventType = 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007;
+export type ChatEventType = (typeof CHAT_EVENT)[keyof typeof CHAT_EVENT];
 export type ModelProvider = string;
+
+// 从常量推导的联合类型，提供编译期类型安全
+export type ToolStage = (typeof TOOL_STAGE)[keyof typeof TOOL_STAGE];
+export type ErrorType = (typeof ERROR_TYPE)[keyof typeof ERROR_TYPE];
 
 export interface ChatSession {
   sessionId: string;
@@ -22,14 +28,12 @@ export interface ChatMessageTiming {
 // 其余 stage（ROUND_START / ROUND_CONTINUE / *_LIMIT 等）为 null
 export interface ToolStatusEvent {
   round: number;
-  stage: string;
+  stage: ToolStage;
   message: string;
-  toolCallId?: string | null;
-  toolName?: string | null;
-  toolArguments?: string | null;
+  toolCallId: string | null;
+  toolName: string | null;
+  toolArguments: string | null;
 }
-
-export type ChatDirectiveMarker = '@Continue@' | '@Finish@' | '@Missing@';
 
 // 消息块类型：按事件实际到达顺序排列
 // reasoning 和 content 交替出现，每个 reasoning 块独立控制展开
@@ -39,8 +43,8 @@ export interface ChatMessageBlock {
   id: string;
   type: ChatMessageBlockType;
   round: number;
-  // reasoning: 思考内容（展示用，已裁标记）
-  // content: 正文内容（展示用，已裁标记）
+  // reasoning: 思考内容
+  // content: 正文内容
   // tool: 工具状态说明文案
   text: string;
   // tool 块的附加信息
@@ -52,7 +56,7 @@ export interface ChatMessageBlock {
 // 1005 ERROR 事件的 eventData 结构
 // 对应后端 ModelStreamErrorEventVO
 export interface ModelStreamErrorEvent {
-  errorType: string;
+  errorType: ErrorType;
   message: string;
   retryable: boolean;
   partialOutput: boolean;
@@ -61,7 +65,7 @@ export interface ModelStreamErrorEvent {
 
 // 消息上记录的错误详情（从 1005 事件解析后挂载）
 export interface ChatMessageErrorInfo {
-  errorType: string;
+  errorType: ErrorType;
   message: string;
   retryable: boolean;
   partialOutput: boolean;
@@ -174,7 +178,6 @@ export interface ModelSourceFetchModelsPayload {
   provider: ModelProvider;
   baseUrl: string;
   apiKey: string;
-  modelName?: string;
 }
 
 export type LocalModelTaskStatus = 'IDLE' | 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
@@ -194,8 +197,8 @@ export interface LocalModelTaskDetail {
   stdout?: string;
   stderr?: string;
   message?: string;
-  startedAt?: string | null;
-  finishedAt?: string | null;
+  startedAt?: number | null;
+  finishedAt?: number | null;
 }
 
 export interface ChatModelConfig {
@@ -219,8 +222,12 @@ export interface SendChatOptions {
   sessionId: string;
   question: string;
   systemPrompt?: string;
-  model?: ChatModelConfig | null;
+  model?: ChatModelConfig;
   onEvent: (event: ChatEvent) => void;
   signal?: AbortSignal;
   enableToolCalling?: boolean;
+  // 工具对话时附带的已授权文件引用 id 列表
+  attachmentFileReferenceIds?: string[];
+  // 当前主附件的文件引用 id
+  primaryAttachmentFileReferenceId?: string;
 }

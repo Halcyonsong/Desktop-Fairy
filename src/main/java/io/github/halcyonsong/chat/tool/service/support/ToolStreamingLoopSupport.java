@@ -4,9 +4,8 @@ import io.github.halcyonsong.chat.common.enums.ChatEventTypeEnum;
 import io.github.halcyonsong.chat.stream.pojo.vo.ChatEventVO;
 import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamEventSupport;
 import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamState;
-import io.github.halcyonsong.chat.tool.constants.ToolChatDirectiveConstants;
 import io.github.halcyonsong.chat.tool.enums.ToolChatStageEnum;
-import io.github.halcyonsong.chat.tool.enums.ToolRoundDirectiveEnum;
+import io.github.halcyonsong.chat.tool.enums.ToolLoopDecisionEnum;
 import io.github.halcyonsong.chat.tool.pojo.PendingMediaAttachment;
 import io.github.halcyonsong.chat.tool.pojo.vo.ToolStatusEventVO;
 import io.github.halcyonsong.chat.tool.service.support.status.ToolLoopRuntimeState;
@@ -40,7 +39,7 @@ public class ToolStreamingLoopSupport {
     private final ChatStreamEventSupport chatStreamEventSupport;
     private final ToolChatPromptSupport toolChatPromptSupport;
 
-    // 流式递归调用
+    // 递归轮次调用
     public Flux<ChatEventVO> streamLoop(ChatClient chatClient,
                                         String systemPrompt,
                                         String originalQuestion,
@@ -48,14 +47,15 @@ public class ToolStreamingLoopSupport {
                                         ChatStreamState streamState,
                                         ToolLoopRuntimeState runtimeState,
                                         int round) {
-        // 判断是否继续递归调用
         ChatEventVO limitEvent = resolveLimitEvent(runtimeState, round);
         if (limitEvent != null) {
             return Flux.just(limitEvent);
         }
-        // 每轮新建临时状态记录
+        // 重置当前轮次决策
+        runtimeState.resetCurrentRoundDecision();
+        // 新建当前轮次状态记录
         ToolRoundState roundState = new ToolRoundState(round);
-        // 构建本轮用户提示
+        // 构建当前轮次用户提示
         String roundUserPrompt = toolChatPromptSupport.buildRoundUserPrompt(
                 originalQuestion,
                 streamState.getOutputBuilder().toString(),
@@ -63,23 +63,24 @@ public class ToolStreamingLoopSupport {
                 round,
                 runtimeState.getMaxRounds()
         );
-        // 构建轮次开始事件
+        // 发起轮次开始事件
         Flux<ChatEventVO> startFlux = Flux.just(
                 buildNullToolStatusEvent(round, ToolChatStageEnum.ROUND_START.getCode(), "第 " + round + " 轮开始")
         );
+        // 构建当前轮次系统提示
         String roundSystemPrompt = toolChatPromptSupport.buildRoundSystemPrompt(systemPrompt, runtimeState);
-        // 构建本轮正式调用方法
+        // 构建当前轮次请求基础客户端
         ChatClient.ChatClientRequestSpec requestSpec = chatClient.prompt()
                 .system(roundSystemPrompt)
                 .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, sessionId))
                 .tools(toolFunctionFactory.createToolFunctions(sessionId, runtimeState));
-        // 进行最终构造
+        // 构建当前轮次事件流
         Flux<ChatEventVO> roundFlux;
-
+        // 校验当前轮次是否有待处理的媒体附件
         if (runtimeState.hasPendingMediaAttachments()) {
             roundFlux = Flux.defer(() -> {
                         applyRoundUserInput(requestSpec, roundUserPrompt, runtimeState);
-
+                        // 发起媒体请求开始事件
                         return Flux.just(buildNullToolStatusEvent(
                                 round,
                                 ToolChatStageEnum.MEDIA_REQUEST_START.getCode(),
@@ -91,12 +92,13 @@ public class ToolStreamingLoopSupport {
                             .concatMap(chatResponse -> handleRoundChunk(chatResponse, streamState, roundState, runtimeState))));
         } else {
             applyRoundUserInput(requestSpec, roundUserPrompt, runtimeState);
-
+            // 无媒体附件，直接发起轮次请求
             roundFlux = requestSpec.stream()
                     .chatResponse()
                     .concatMap(chatResponse -> handleRoundChunk(chatResponse, streamState, roundState, runtimeState));
         }
-        return  buildLoopHeaderFlux(streamState, round)
+        // 正式发起请求
+        return buildLoopHeaderFlux(round)
                 .concatWith(startFlux)
                 .concatWith(roundFlux)
                 .concatWith(Flux.defer(() -> afterRound(
@@ -110,7 +112,7 @@ public class ToolStreamingLoopSupport {
                 )));
     }
 
-    // 构造最终用户提示词输入
+    // 应用当前轮次用户提示词
     private void applyRoundUserInput(ChatClient.ChatClientRequestSpec requestSpec,
                                      String roundUserPrompt,
                                      ToolLoopRuntimeState runtimeState) {
@@ -118,7 +120,7 @@ public class ToolStreamingLoopSupport {
             requestSpec.user(roundUserPrompt);
             return;
         }
-
+        // 消费当前轮次待处理的媒体附件
         List<PendingMediaAttachment> attachments = runtimeState.consumePendingMediaAttachments();
 
         requestSpec.user(userSpec -> {
@@ -132,7 +134,7 @@ public class ToolStreamingLoopSupport {
         });
     }
 
-    // 解析媒体类型
+    // 解析当前轮次媒体附件类型
     private MimeType resolveMimeType(String contentType) {
         if (StringUtils.hasText(contentType)) {
             return MimeType.valueOf(contentType.trim());
@@ -140,21 +142,20 @@ public class ToolStreamingLoopSupport {
         return MimeTypeUtils.APPLICATION_OCTET_STREAM;
     }
 
-    // 判断并添加调用头
-    private Flux<ChatEventVO> buildLoopHeaderFlux(ChatStreamState streamState, int round) {
+    // 构建当前轮次循环头事件
+    private Flux<ChatEventVO> buildLoopHeaderFlux(int round) {
         if (round != 1) {
             return Flux.empty();
         }
-        String loopHeader = ToolChatDirectiveConstants.LOOP + "\n";
-        streamState.getOutputBuilder().append(loopHeader);
-        return Flux.just(ChatEventVO.builder()
-                .eventType(ChatEventTypeEnum.DATA.getValue())
-                .eventData(loopHeader)
-                .build());
+        return Flux.just(buildDecisionEvent(
+                round,
+                ToolChatStageEnum.LOOP_START.getCode(),
+                ToolChatStageEnum.LOOP_START.getDesc()
+        ));
     }
 
-    // 检查是否超过限制
-    private ChatEventVO resolveLimitEvent(ToolLoopRuntimeState runtimeState, int round) {
+    // 解析当前轮次限制事件
+       private ChatEventVO resolveLimitEvent(ToolLoopRuntimeState runtimeState, int round) {
         if (runtimeState.exceedsRoundLimit(round)) {
             return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.ROUND_LIMIT.getCode(), "已达到最大轮次限制，停止继续处理。");
         }
@@ -164,22 +165,19 @@ public class ToolStreamingLoopSupport {
         if (runtimeState.exceedsDurationLimit()) {
             return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.TIME_LIMIT.getCode(), "已达到最大执行时长限制，停止继续处理。");
         }
-        if (runtimeState.exceedsMissingDirectiveLimit()) {
-            return buildNullToolStatusEvent(round - 1, ToolChatStageEnum.DIRECTIVE_LIMIT.getCode(), "连续多轮未输出控制标记，停止继续处理。");
-        }
         return null;
     }
 
-    // 处理每轮的输出，是否包含工具调用，再包装成事件
+    // 处理当前轮次响应块
     private Flux<ChatEventVO> handleRoundChunk(ChatResponse chatResponse,
                                                ChatStreamState streamState,
                                                ToolRoundState roundState,
                                                ToolLoopRuntimeState runtimeState) {
-        // 从响应中提取助手消息
         AssistantMessage assistantMessage = Optional.ofNullable(chatResponse)
                 .map(ChatResponse::getResult)
                 .map(Generation::getOutput)
                 .orElse(null);
+
         if (assistantMessage == null) {
             log.info("tool chunk: assistantMessage is null");
         } else {
@@ -188,12 +186,12 @@ public class ToolStreamingLoopSupport {
                     assistantMessage.getText(),
                     assistantMessage.getMetadata());
         }
-        // 构建前缀事件容器
+
         List<ChatEventVO> prefixEvents = new ArrayList<>();
-        // 有工具调用事件的特殊处理
+        // 处理当前轮次工具调用
         if (assistantMessage != null && assistantMessage.hasToolCalls()) {
             roundState.markToolCallDetected();
-            // 获取工具调用列表
+            // 解析当前轮次工具调用
             List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
             if (!CollectionUtils.isEmpty(toolCalls)) {
                 for (AssistantMessage.ToolCall toolCall : toolCalls) {
@@ -202,6 +200,7 @@ public class ToolStreamingLoopSupport {
                     if (!firstSeen) {
                         continue;
                     }
+
                     String toolSummary = summarizeToolCall(toolCall);
                     roundState.addToolSummary(toolSummary);
 
@@ -228,7 +227,6 @@ public class ToolStreamingLoopSupport {
 
         String text = assistantMessage == null ? null : assistantMessage.getText();
         if (StringUtils.hasText(text)) {
-            // 追加输出到本轮输出临时记录容器
             roundState.appendRoundOutput(text);
         }
 
@@ -238,7 +236,7 @@ public class ToolStreamingLoopSupport {
         return prefixFlux.concatWith(dataFlux);
     }
 
-    // 处理每轮结束，判断是否继续下一轮
+    // 处理当前轮次结束事件
     private Flux<ChatEventVO> afterRound(ChatClient chatClient,
                                          String systemPrompt,
                                          String originalQuestion,
@@ -246,47 +244,20 @@ public class ToolStreamingLoopSupport {
                                          ChatStreamState streamState,
                                          ToolLoopRuntimeState runtimeState,
                                          ToolRoundState roundState) {
-        // 从一轮记录中取出全部
         String roundOutput = roundState.getRoundOutput();
-        ToolRoundDirectiveEnum directive = resolveRoundDirective(roundOutput);
+        ToolLoopDecisionEnum decision = runtimeState.getCurrentRoundDecision();
 
-        log.info("tool stream round finished, sessionId={}, round={}, directive={}, toolCallDetected={}, roundOutputLength={}",
+        log.info("tool stream round finished, sessionId={}, round={}, decision={}, reason={}, toolCallDetected={}, roundOutputLength={}",
                 sessionId,
                 roundState.getRound(),
-                directive,
+                decision,
+                runtimeState.getCurrentRoundDecisionReason(),
                 roundState.isToolCallDetected(),
                 roundOutput.length());
-        // 更新最新工具调用事件
+
         runtimeState.setLatestToolSummary(roundState.getToolSummaryText());
 
-        if (directive == ToolRoundDirectiveEnum.FINISH) {
-            runtimeState.setPreviousDirectiveMissing(false);
-            return Flux.empty();
-        }
-
-        // 统计事件
         List<ChatEventVO> bridgeEvents = new ArrayList<>();
-
-        if (directive == ToolRoundDirectiveEnum.MISSING) {
-            runtimeState.increaseMissingDirectiveCount();
-
-            String missingDirectiveText = "\n" + ToolChatDirectiveConstants.MISSING + "\n";
-            streamState.getOutputBuilder().append(missingDirectiveText);
-
-            bridgeEvents.add(buildMissingDirectiveDataEvent());
-            bridgeEvents.add(buildDirectiveWarningEvent(roundState.getRound()));
-            // 标记上一轮缺少标记
-            runtimeState.setPreviousDirectiveMissing(true);
-            // 超过容错限度强制终止
-            if (runtimeState.exceedsMissingDirectiveLimit()) {
-                bridgeEvents.add(buildMissingDirectiveLimitEvent(roundState.getRound()));
-                return Flux.fromIterable(bridgeEvents);
-            }
-        }
-        if (directive == ToolRoundDirectiveEnum.CONTINUE) {
-            runtimeState.setPreviousDirectiveMissing(false);
-            runtimeState.resetMissingDirectiveCount();
-        }
 
         if (StringUtils.hasText(roundState.getToolSummaryText())) {
             bridgeEvents.add(buildToolResultEvent(
@@ -294,28 +265,70 @@ public class ToolStreamingLoopSupport {
                     roundState.getToolSummaryText()
             ));
         }
-
-        bridgeEvents.add(buildNullToolStatusEvent(
+        // 判断是否继续下一轮
+        if (decision == ToolLoopDecisionEnum.CONTINUE) {
+            bridgeEvents.add(buildDecisionEvent(
+                    roundState.getRound(),
+                    ToolChatStageEnum.ROUND_CONTINUE.getCode(),
+                    StringUtils.hasText(runtimeState.getCurrentRoundDecisionReason())
+                            ? "模型要求继续进入下一轮：" + runtimeState.getCurrentRoundDecisionReason()
+                            : "模型要求继续进入下一轮。"
+            ));
+            // 补充轮次分隔符
+            appendRoundSeparatorIfNeeded(streamState);
+            // 继续下一轮
+            return Flux.fromIterable(bridgeEvents)
+                    .concatWith(streamLoop(
+                            chatClient,
+                            systemPrompt,
+                            originalQuestion,
+                            sessionId,
+                            streamState,
+                            runtimeState,
+                            roundState.getRound() + 1
+                    ));
+        }
+        // 结束轮次请求
+        if (decision == ToolLoopDecisionEnum.FINISH) {
+            bridgeEvents.add(buildDecisionEvent(
+                    roundState.getRound(),
+                    ToolChatStageEnum.ROUND_FINISH.getCode(),
+                    StringUtils.hasText(runtimeState.getCurrentRoundDecisionReason())
+                            ? "模型决定结束本次处理：" + runtimeState.getCurrentRoundDecisionReason()
+                            : "模型决定结束本次处理。"
+            ));
+            return Flux.fromIterable(bridgeEvents);
+        }
+        // 兜底结束
+        bridgeEvents.add(buildDecisionEvent(
                 roundState.getRound(),
-                ToolChatStageEnum.ROUND_CONTINUE.getCode(),
-                directive == ToolRoundDirectiveEnum.CONTINUE
-                        ? "模型要求继续进入下一轮。"
-                        : "本轮未提供结束标记，系统默认继续进入下一轮。"
+                ToolChatStageEnum.ROUND_FINISH.getCode(),
+                "模型未显式要求继续，系统结束本次处理。"
         ));
-
-        return Flux.fromIterable(bridgeEvents)
-                .concatWith(streamLoop(
-                        chatClient,
-                        systemPrompt,
-                        originalQuestion,
-                        sessionId,
-                        streamState,
-                        runtimeState,
-                        roundState.getRound() + 1
-                ));
+        return Flux.fromIterable(bridgeEvents);
     }
 
-    // 包装空工具调用事件
+    // 判断是否需要补充轮次分隔符
+    private void appendRoundSeparatorIfNeeded(ChatStreamState streamState) {
+        StringBuilder outputBuilder = streamState.getOutputBuilder();
+        if (outputBuilder.isEmpty()) {
+            return;
+        }
+
+        String content = outputBuilder.toString();
+        if (content.endsWith("\n\n")) {
+            return;
+        }
+
+        if (content.endsWith("\n")) {
+            outputBuilder.append("\n");
+            return;
+        }
+
+        outputBuilder.append("\n\n");
+    }
+
+    // 构建空工具状态事件
     private ChatEventVO buildNullToolStatusEvent(int round, String stage, String message) {
         ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
                 .round(round)
@@ -332,7 +345,7 @@ public class ToolStreamingLoopSupport {
                 .build();
     }
 
-    // 包装工具调用事件
+    // 构建工具状态事件
     private ChatEventVO buildToolStatusEvent(int round, String stage, String message, AssistantMessage.ToolCall toolCall) {
         ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
                 .round(round)
@@ -349,6 +362,7 @@ public class ToolStreamingLoopSupport {
                 .build();
     }
 
+    // 构建工具结果事件
     private ChatEventVO buildToolResultEvent(int round, String message) {
         ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
                 .round(round)
@@ -365,7 +379,24 @@ public class ToolStreamingLoopSupport {
                 .build();
     }
 
-    // 判断工具调用类型
+    // 构建决策事件
+    private ChatEventVO buildDecisionEvent(int round, String stage, String message) {
+        ToolStatusEventVO eventVO = ToolStatusEventVO.builder()
+                .round(round)
+                .stage(stage)
+                .message(message)
+                .toolCallId(null)
+                .toolName(null)
+                .toolArguments(null)
+                .build();
+
+        return ChatEventVO.builder()
+                .eventType(ChatEventTypeEnum.TOOL_STATUS.getValue())
+                .eventData(eventVO)
+                .build();
+    }
+
+    // 摘要工具调用
     private String summarizeToolCall(AssistantMessage.ToolCall toolCall) {
         if (toolCall == null) {
             return "unknown-tool-call";
@@ -375,49 +406,6 @@ public class ToolStreamingLoopSupport {
         String name = toolCall.name();
         String arguments = toolCall.arguments();
 
-        return "id=%s, name=%s, arguments=%s".formatted(
-                id,
-                name,
-                arguments
-        );
+        return "id=%s, name=%s, arguments=%s".formatted(id, name, arguments);
     }
-
-    // 判断本轮结束事件
-    private ToolRoundDirectiveEnum resolveRoundDirective(String roundOutput) {
-        if (!StringUtils.hasText(roundOutput)) {
-            return ToolRoundDirectiveEnum.MISSING;
-        }
-        String normalized = roundOutput.trim();
-        if (normalized.endsWith(ToolChatDirectiveConstants.FINISH)) {
-            return ToolRoundDirectiveEnum.FINISH;
-        }
-        if (normalized.endsWith(ToolChatDirectiveConstants.CONTINUE)) {
-            return ToolRoundDirectiveEnum.CONTINUE;
-        }
-        return ToolRoundDirectiveEnum.MISSING;
-    }
-
-    private ChatEventVO buildDirectiveWarningEvent(int round) {
-        return buildNullToolStatusEvent(
-                round,
-                ToolChatStageEnum.DIRECTIVE_WARNING.getCode(),
-                "本轮回答末尾未检测到 @Continue 或 @Finish，系统已追加 @Missing，并继续进入下一轮。"
-        );
-    }
-
-    private ChatEventVO buildMissingDirectiveDataEvent() {
-        return ChatEventVO.builder()
-                .eventType(ChatEventTypeEnum.DATA.getValue())
-                .eventData("\n" + ToolChatDirectiveConstants.MISSING + "\n")
-                .build();
-    }
-
-    private ChatEventVO buildMissingDirectiveLimitEvent(int round) {
-        return buildNullToolStatusEvent(
-                round,
-                ToolChatStageEnum.DIRECTIVE_LIMIT.getCode(),
-                "连续多轮未输出 @Continue 或 @Finish，系统已强制终止本次处理。"
-        );
-    }
-
 }

@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { LoaderCircle } from '@lucide/vue';
+import { LoaderCircle, WifiOff } from '@lucide/vue';
 import FloatingFairy from '@/components/fairy/FloatingFairy.vue';
 import MinimizeDialog from '@/components/common/MinimizeDialog.vue';
 import ToastContainer from '@/components/common/ToastContainer.vue';
@@ -15,7 +15,7 @@ const backendStatusStore = useBackendStatusStore();
 const minimizePrefs = useMinimizePreferencesStore();
 const windowMode = computed(() => windowModeStore.windowMode);
 const isFairyWindow = computed(() => windowMode.value === 'fairy');
-const backendReady = computed(() => backendStatusStore.ready);
+const backendStatus = computed(() => backendStatusStore.status);
 
 // 最小化弹窗状态
 const minimizeDialogOpen = ref(false);
@@ -42,11 +42,22 @@ onMounted(() => {
 
 <template>
   <!-- 后端未就绪时的加载占位（仅工作台窗口显示） -->
-  <div v-if="!backendReady && !isFairyWindow" class="backend-connecting">
+  <div v-if="backendStatus !== 'ready' && !isFairyWindow" class="backend-connecting">
     <div class="backend-connecting__card">
-      <LoaderCircle :size="32" class="backend-connecting__spinner" />
-      <p class="backend-connecting__title">{{ uiText.backend.connecting }}</p>
-      <p class="backend-connecting__hint">{{ uiText.backend.connectingHint }}</p>
+      <!-- 首次连接：spinner -->
+      <LoaderCircle v-if="backendStatus === 'connecting'" :size="32" class="backend-connecting__spinner" />
+      <!-- 断线重连：wifi-off 图标 + spinner -->
+      <div v-else class="backend-connecting__reconnect-icon">
+        <WifiOff :size="28" />
+        <LoaderCircle :size="16" class="backend-connecting__reconnect-spinner" />
+      </div>
+
+      <p class="backend-connecting__title">
+        {{ backendStatus === 'reconnecting' ? uiText.backend.reconnecting : uiText.backend.connecting }}
+      </p>
+      <p class="backend-connecting__hint">
+        {{ backendStatus === 'reconnecting' ? uiText.backend.reconnectingHint : uiText.backend.connectingHint }}
+      </p>
     </div>
   </div>
   <template v-else>
@@ -84,6 +95,22 @@ onMounted(() => {
   animation: spin 1.2s linear infinite;
 }
 
+.backend-connecting__reconnect-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary, #8a9099);
+}
+
+.backend-connecting__reconnect-spinner {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  color: var(--color-accent);
+  animation: spin 1.2s linear infinite;
+}
+
 .backend-connecting__title {
   margin: 0;
   font-size: 15px;
@@ -97,10 +124,5 @@ onMounted(() => {
   color: var(--color-text-secondary, #8a9099);
   max-width: 280px;
   line-height: 1.5;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 </style>

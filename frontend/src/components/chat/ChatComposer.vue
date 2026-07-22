@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { Camera, FileUp, LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2, Wrench } from '@lucide/vue';
+import { Camera, FileUp, FolderOpen, LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2, Wrench } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AttachmentChips from '@/components/chat/composer/AttachmentChips.vue';
 import FilePreview from '@/components/chat/composer/FilePreview.vue';
+import FolderAuthorizeConfirm from '@/components/chat/composer/FolderAuthorizeConfirm.vue';
 import ModelPicker from '@/components/chat/composer/ModelPicker.vue';
 import RuntimeSettingsPopover from '@/components/chat/composer/RuntimeSettingsPopover.vue';
 import { appConfig } from '@/config/appConfig';
 import { customText } from '@/config/customText';
 import { uiText } from '@/config/uiText';
 import { useSessionFileStore } from '@/stores/sessionFileStore';
+import { useSessionFolderStore } from '@/stores/sessionFolderStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useVoskVoiceController } from '@/modules/vosk/useVoskVoiceController';
 import type { SelectableModelGroup, SystemPromptEntry, SystemPromptSlot } from '@/types/chat';
-import type { SessionFileReference } from '@/main';
+import type { SessionFileReference } from '@/types/electron';
 
 const props = defineProps<{
   sending: boolean;
@@ -115,10 +117,15 @@ function toggleSettings() {
 
 // ===== 附件管理 =====
 const sessionFileStore = useSessionFileStore();
+const sessionFolderStore = useSessionFolderStore();
 const toast = useToastStore();
 const isDragging = ref(false);
 const attachmentMenuOpen = ref(false);
 const capturingScreenshot = ref(false);
+
+// 文件夹授权确认弹窗状态
+const folderConfirmOpen = ref(false);
+const pendingFolderPath = ref('');
 
 const attachmentButtonTitle = computed(() => {
   if (props.isTemporarySession) return customText.composer.attachmentTemporaryDisabled;
@@ -147,6 +154,44 @@ async function handleSelectFiles() {
   } catch {
     // toast 已在 store 中处理
   }
+}
+
+async function handleSelectFolder() {
+  attachmentMenuOpen.value = false;
+  if (props.isTemporarySession || !props.sessionId) {
+    toast.warning(customText.composer.attachmentTemporaryDisabled);
+    return;
+  }
+
+  try {
+    const folderPath = await window.desktopFairy?.showOpenFolderDialog?.();
+    if (!folderPath) return;
+
+    // 授权前需用户确认（风险操作）
+    pendingFolderPath.value = folderPath;
+    folderConfirmOpen.value = true;
+  } catch {
+    // 文件夹选择失败，静默处理
+  }
+}
+
+async function handleConfirmFolderAuthorize() {
+  folderConfirmOpen.value = false;
+  const folderPath = pendingFolderPath.value;
+  pendingFolderPath.value = '';
+
+  if (!folderPath || !props.sessionId) return;
+
+  try {
+    await sessionFolderStore.authorizeFolder(props.sessionId, folderPath);
+  } catch {
+    // toast 已在 store 中处理
+  }
+}
+
+function handleCancelFolderAuthorize() {
+  folderConfirmOpen.value = false;
+  pendingFolderPath.value = '';
 }
 
 async function handleCaptureScreenshot(hideWindow = false) {
@@ -335,8 +380,11 @@ watch(
       <AttachmentChips
         v-if="sessionFileStore.files.length > 0"
         :files="sessionFileStore.files"
+        :primary-attachment-file-reference-id="sessionFileStore.primaryAttachmentFileReferenceId"
         @remove="handleRemoveAttachment"
         @preview="handlePreviewFile"
+        @set-primary="sessionFileStore.setPrimaryAttachment"
+        @clear-primary="sessionFileStore.clearPrimaryAttachment"
       />
 
       <textarea
@@ -344,6 +392,7 @@ watch(
         :value="draft"
         rows="3"
         :placeholder="uiText.composer.placeholder"
+        aria-label="消息输入"
         @input="emit('update:draft', ($event.target as HTMLTextAreaElement).value)"
         @keydown="handleKeydown"
         @paste="handlePaste"
@@ -357,11 +406,12 @@ watch(
               class="composer-tool-button composer-tool-button--attachment"
               :class="{ 'composer-tool-button--active': attachmentMenuOpen }"
               type="button"
-              :disabled="isTemporarySession || sessionFileStore.authorizing || capturingScreenshot"
+              :disabled="isTemporarySession || sessionFileStore.authorizing || sessionFolderStore.authorizing || capturingScreenshot"
               :title="attachmentButtonTitle"
+              aria-label="添加附件"
               @click="toggleAttachmentMenu"
             >
-              <LoaderCircle v-if="sessionFileStore.authorizing || capturingScreenshot" :size="18" class="spin" />
+              <LoaderCircle v-if="sessionFileStore.authorizing || sessionFolderStore.authorizing || capturingScreenshot" :size="18" class="spin" />
               <Paperclip v-else :size="18" />
             </button>
 
@@ -371,6 +421,10 @@ watch(
                 <button class="attachment-menu-item" type="button" @click="handleSelectFiles">
                   <FileUp :size="16" />
                   <span>{{ customText.composer.selectFile }}</span>
+                </button>
+                <button class="attachment-menu-item" type="button" @click="handleSelectFolder">
+                  <FolderOpen :size="16" />
+                  <span>{{ customText.folder.selectFolder }}</span>
                 </button>
                 <div class="attachment-menu-divider"></div>
                 <button class="attachment-menu-item" type="button" @click="handleCaptureScreenshot(false)">
@@ -432,7 +486,7 @@ watch(
         </div>
 
         <div class="composer-tools-right">
-          <button class="composer-tool-button" type="button" :title="uiText.composer.rollback" :disabled="sending" @click="emit('rollback')">
+          <button class="composer-tool-button" type="button" :title="uiText.composer.rollback" aria-label="回退" :disabled="sending" @click="emit('rollback')">
             <Undo2 :size="18" />
           </button>
           <!-- 语音输入按钮：放在发送键左边 -->
@@ -454,10 +508,10 @@ watch(
             <LoaderCircle v-else-if="voiceInput.isLoading.value" :size="18" class="spin" />
             <Mic v-else :size="18" />
           </button>
-          <button v-if="sending" class="send-button" type="button" :title="uiText.composer.stop" @click="emit('stop')">
+          <button v-if="sending" class="send-button" type="button" :title="uiText.composer.stop" aria-label="停止生成" @click="emit('stop')">
             <Square :size="19" />
           </button>
-          <button v-else class="send-button" type="button" :title="uiText.composer.send" :disabled="(!allowEmptySend && !draft.trim()) || modelRequired" @click="submit">
+          <button v-else class="send-button" type="button" :title="uiText.composer.send" aria-label="发送消息" :disabled="sending || (!allowEmptySend && !draft.trim()) || modelRequired" @click="submit">
             <SendHorizontal :size="19" />
           </button>
         </div>
@@ -467,4 +521,12 @@ watch(
 
   <!-- 文件预览弹窗 -->
   <FilePreview :open="previewOpen" :file="previewFile" @close="closePreview" />
+
+  <!-- 文件夹授权确认弹窗 -->
+  <FolderAuthorizeConfirm
+    :open="folderConfirmOpen"
+    :folder-path="pendingFolderPath"
+    @confirm="handleConfirmFolderAuthorize"
+    @cancel="handleCancelFolderAuthorize"
+  />
 </template>

@@ -4,7 +4,7 @@ import { Copy, FolderOpen, RefreshCw } from '@lucide/vue';
 import { useDesktopFairyAPI } from '@/api/useDesktopFairyAPI';
 import { copyText } from '@/utils/clipboard';
 import { UI_TIMING } from '@/config/uiConstants';
-import type { FilePathsResult } from '@/main';
+import type { FilePathsResult } from '@/types/electron';
 
 const desktopFairy = useDesktopFairyAPI();
 
@@ -333,10 +333,5 @@ onMounted(() => {
 
 .spin {
   animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 </style>

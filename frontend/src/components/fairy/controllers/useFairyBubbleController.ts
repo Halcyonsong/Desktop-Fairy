@@ -1,42 +1,19 @@
-import { computed, ref } from 'vue';
+import { onScopeDispose, ref } from 'vue';
 import { FAIRY_TIMING } from '@/config/uiConstants';
-import { stripControlMarkers } from '@/utils/chatMessages';
 import type { ChatMessage } from '@/types/chat';
 
 // 气泡自动隐藏时间集中到 config/uiConstants.ts，便于统一调整 UI 节奏
 const AUTO_HIDE_MS = FAIRY_TIMING.bubbleAutoHideMs;
 
 /**
- * 从原始消息内容中提取最后一轮的纯文本：
- *   1. 去掉 @Loop@ 头 / @Finish@ 尾（仅未转义的）
- *   2. 按未转义的 @Continue@ / @Missing@ 切分，取最后一段非空内容
- *   3. stripControlMarkers 清理残留标记和转义符
+ * 从消息内容中提取用于精灵气泡展示的文本。
  *
- * 精灵气泡只展示纯文本，不做 markdown 渲染，
- * 因此只取最后一轮正文，避免历史轮次内容刷屏。
+ * 后端已切换为工具决策（markContinue/markFinish），正文不再包含 @Continue@/@Finish@/@Missing@ 标记，
+ * 因此无需标记裁剪或按标记切分轮次。直接返回原始内容即可。
+ * 精灵气泡只展示纯文本，不做 markdown 渲染。
  */
 function extractLastRoundContent(content: string): string {
-  if (!content) {
-    return '';
-  }
-
-  // 去掉 @Loop@ 头（仅未转义的）
-  let body = content.replace(/^\s*@Loop@\s*/, '');
-  // 去掉末尾 @Finish@（仅未转义的）
-  body = body.replace(/(?<!\/)@Finish@\s*$/, '');
-  // 按未转义的 @Continue@ / @Missing@ 切分
-  const parts = body.split(/(?<!\/)@(?:Continue|Missing)@/);
-
-  // 从后往前找第一个非空段，作为最后一轮正文
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const trimmed = parts[i].trim();
-    if (trimmed) {
-      return stripControlMarkers(trimmed);
-    }
-  }
-
-  // 兜底：切分后全部为空，直接清理整段
-  return stripControlMarkers(content);
+  return content || '';
 }
 
 export function useFairyBubbleController() {
@@ -47,8 +24,6 @@ export function useFairyBubbleController() {
 
   let bubbleHideTimer: number | null = null;
   let composerHideTimer: number | null = null;
-
-  const hasBubbleContent = computed(() => previewReply.value.trim().length > 0);
 
   function clearBubbleHideTimer() {
     if (bubbleHideTimer !== null) {
@@ -63,6 +38,12 @@ export function useFairyBubbleController() {
       composerHideTimer = null;
     }
   }
+
+  // 作用域销毁时清理 pending 定时器，避免精灵关闭后倒计时回调仍执行
+  onScopeDispose(() => {
+    clearBubbleHideTimer();
+    clearComposerHideTimer();
+  });
 
   function scheduleBubbleHide() {
     clearBubbleHideTimer();
@@ -138,7 +119,6 @@ export function useFairyBubbleController() {
     composerVisible,
     previewReply,
     composerLocked,
-    hasBubbleContent,
     clearBubbleHideTimer,
     clearComposerHideTimer,
     scheduleBubbleHide,

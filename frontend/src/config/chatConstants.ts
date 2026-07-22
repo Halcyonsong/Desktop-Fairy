@@ -9,12 +9,13 @@ export const CHAT_EVENT = {
 } as const;
 
 // 1006 TOOL_STATUS / 1007 TOOL_RESULT 的 stage 取值
+// 后端已从正文标记切换为工具决策（markContinue/markFinish），不再输出 @Continue@/@Finish@/@Missing@
 export const TOOL_STAGE = {
+  loopStart: 'LOOP_START',
   roundStart: 'ROUND_START',
   toolCall: 'TOOL_CALL',
   roundContinue: 'ROUND_CONTINUE',
-  directiveWarning: 'DIRECTIVE_WARNING',
-  directiveLimit: 'DIRECTIVE_LIMIT',
+  roundFinish: 'ROUND_FINISH',
   roundLimit: 'ROUND_LIMIT',
   toolLimit: 'TOOL_LIMIT',
   timeLimit: 'TIME_LIMIT',
@@ -37,10 +38,6 @@ export const ERROR_TYPE = {
   badRequest: 'BAD_REQUEST',
   unknown: 'UNKNOWN',
 } as const;
-
-// 正文尾部轮次控制标记（展示时裁掉，原始文本保留）
-// 新格式为前后包裹的闭合标记，可精确识别，避免与正文粘连
-export const TOOL_DIRECTIVE_MARKERS = ['@Continue@', '@Finish@', '@Missing@'] as const;
 
 export const HISTORY_NO_MORE_CACHE_MS = 30_000;
 

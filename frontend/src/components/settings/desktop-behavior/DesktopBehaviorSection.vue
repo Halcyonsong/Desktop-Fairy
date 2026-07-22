@@ -5,7 +5,7 @@ import { fairyConfig } from '@/config/fairyConfig';
 import { customText } from '@/config/customText';
 import { useFairyStore } from '@/stores/fairyStore';
 import { useMinimizePreferencesStore } from '@/stores/minimizePreferencesStore';
-import type { MinimizeBehavior } from '@/main';
+import type { MinimizeBehavior } from '@/types/electron';
 
 const fairyStore = useFairyStore();
 const minimizePrefs = useMinimizePreferencesStore();

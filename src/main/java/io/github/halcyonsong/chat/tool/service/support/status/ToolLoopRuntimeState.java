@@ -1,8 +1,8 @@
 package io.github.halcyonsong.chat.tool.service.support.status;
 
+import io.github.halcyonsong.chat.tool.enums.ToolLoopDecisionEnum;
 import io.github.halcyonsong.chat.tool.pojo.PendingMediaAttachment;
 import lombok.Getter;
-import lombok.Setter;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.util.StringUtils;
 
@@ -12,6 +12,7 @@ import java.util.*;
 
 @Getter
 public class ToolLoopRuntimeState {
+
     // 开始时间
     private final Instant startedAt = Instant.now();
     // 最大轮次
@@ -24,17 +25,15 @@ public class ToolLoopRuntimeState {
     private int toolCallCount = 0;
     // 最新工具调用摘要
     private String latestToolSummary = "";
-    // 记录工具id
+    // 记录工具 id，避免切块重复计数
     private final Set<String> seenToolCallIds = new HashSet<>();
-    // 缺少标记计数
-    private int missingDirectiveCount = 0;
-    // 上一轮是否缺少标记
-    @Setter
-    private boolean previousDirectiveMissing = false;
+    // 当前轮次决策
+    private ToolLoopDecisionEnum currentRoundDecision;
+    // 当前轮次决策原因
+    private String currentRoundDecisionReason = "";
     // 待处理媒体附件
     private final List<PendingMediaAttachment> pendingMediaAttachments = new ArrayList<>();
-
-    // 构造调用限制
+    // 构造函数
     public ToolLoopRuntimeState(int maxRounds, int maxToolCalls, int maxDurationSeconds) {
         this.maxRounds = maxRounds;
         this.maxToolCalls = maxToolCalls;
@@ -45,13 +44,13 @@ public class ToolLoopRuntimeState {
         if (!StringUtils.hasText(toolCallKey)) {
             return false;
         }
-
         boolean added = seenToolCallIds.add(toolCallKey);
         if (added) {
             toolCallCount++;
         }
         return added;
     }
+    // 解析工具调用
     public String resolveToolCallKey(int round, AssistantMessage.ToolCall toolCall) {
         if (toolCall == null) {
             return "round-" + round + "-unknown-tool-call";
@@ -66,34 +65,37 @@ public class ToolLoopRuntimeState {
 
         return "round-%d|name=%s|args=%s".formatted(round, name, arguments);
     }
-    // 缺少标记计数加一
-    public void increaseMissingDirectiveCount() {
-        missingDirectiveCount++;
+    // 标记继续
+    public void markContinue(String reason) {
+        currentRoundDecision = ToolLoopDecisionEnum.CONTINUE;
+        currentRoundDecisionReason = normalizeReason(reason);
     }
-    // 重置缺少标记计数
-    public void resetMissingDirectiveCount() {
-        missingDirectiveCount = 0;
+    // 标记完成
+    public void markFinish(String reason) {
+        currentRoundDecision = ToolLoopDecisionEnum.FINISH;
+        currentRoundDecisionReason = normalizeReason(reason);
     }
-    // 判断轮次是否超过限制
+    // 重置当前轮次决策
+    public void resetCurrentRoundDecision() {
+        currentRoundDecision = null;
+        currentRoundDecisionReason = "";
+    }
+    // 检查是否超过轮次限制
     public boolean exceedsRoundLimit(int round) {
         return round > maxRounds;
     }
-    // 判断工具调用次数是否超过限制
+    // 检查是否超过工具调用次数限制
     public boolean exceedsToolCallLimit() {
         return toolCallCount >= maxToolCalls;
     }
-    // 更新最新工具调用摘要
-    public void setLatestToolSummary(String latestToolSummary) {
-        this.latestToolSummary = latestToolSummary == null ? "" : latestToolSummary;
-    }
-    // 判断持续时间是否超过限制
+    // 检查是否超过持续时间限制
     public boolean exceedsDurationLimit() {
         long elapsedSeconds = Duration.between(startedAt, Instant.now()).getSeconds();
         return elapsedSeconds >= maxDurationSeconds;
     }
-    // 判断缺少标记计数是否超过限制
-    public boolean exceedsMissingDirectiveLimit() {
-        return missingDirectiveCount >= 3;
+    // 设置最新工具调用摘要
+    public void setLatestToolSummary(String latestToolSummary) {
+        this.latestToolSummary = latestToolSummary == null ? "" : latestToolSummary;
     }
     // 添加待处理媒体附件
     public void addPendingMediaAttachment(PendingMediaAttachment attachment) {
@@ -101,7 +103,7 @@ public class ToolLoopRuntimeState {
             pendingMediaAttachments.add(attachment);
         }
     }
-    // 判断是否有待处理媒体附件
+    // 检查是否有待处理媒体附件
     public boolean hasPendingMediaAttachments() {
         return !pendingMediaAttachments.isEmpty();
     }
@@ -115,5 +117,8 @@ public class ToolLoopRuntimeState {
         pendingMediaAttachments.clear();
         return snapshot;
     }
-
+    // 规范化决策原因
+    private String normalizeReason(String reason) {
+        return StringUtils.hasText(reason) ? reason.trim() : "";
+    }
 }

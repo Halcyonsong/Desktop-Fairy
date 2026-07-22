@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { FileText, ImageIcon, LoaderCircle, X } from '@lucide/vue';
-import type { SessionFileReference } from '@/main';
+import type { SessionFileReference } from '@/types/electron';
+import { PREVIEWABLE_IMAGE_EXTENSIONS, PREVIEWABLE_TEXT_EXTENSIONS, getExtension, formatFileSize } from '@/utils/fileUtils';
 
 const props = defineProps<{
   open: boolean;
@@ -17,19 +18,6 @@ const imageUrl = ref<string | null>(null);
 const textContent = ref<string | null>(null);
 const previewType = ref<'image' | 'text' | 'unsupported'>('unsupported');
 
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
-const TEXT_EXTENSIONS = ['txt', 'md', 'json', 'csv', 'log', 'xml', 'yml', 'yaml', 'java', 'kt', 'js', 'ts', 'html', 'css', 'properties', 'sql'];
-
-function getExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() ?? '';
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 watch(() => props.file, async (file) => {
   if (!file || !props.open) return;
 
@@ -40,13 +28,13 @@ watch(() => props.file, async (file) => {
   const ext = getExtension(file.originalFileName);
 
   try {
-    if (IMAGE_EXTENSIONS.includes(ext)) {
+    if (PREVIEWABLE_IMAGE_EXTENSIONS.includes(ext)) {
       previewType.value = 'image';
       const dataUrl = await window.desktopFairy?.readFileAsDataUrl?.(file.absolutePath);
       if (dataUrl) {
         imageUrl.value = dataUrl;
       }
-    } else if (TEXT_EXTENSIONS.includes(ext)) {
+    } else if (PREVIEWABLE_TEXT_EXTENSIONS.includes(ext)) {
       previewType.value = 'text';
       const text = await window.desktopFairy?.readFileAsText?.(file.absolutePath);
       if (text !== null && text !== undefined) {
@@ -74,24 +62,29 @@ watch(() => props.open, (open) => {
     window.removeEventListener('keydown', handleEsc);
   }
 });
+
+// 组件卸载时清理残留的 keydown 监听器，避免 open === true 状态下卸载导致泄漏
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEsc);
+});
 </script>
 
 <template>
   <Transition name="preview-fade">
-    <div v-if="open && file" class="file-preview-overlay" @click.self="emit('close')">
+    <div v-if="open && file" class="file-preview-overlay" role="dialog" aria-modal="true" aria-label="文件预览" @click.self="emit('close')">
       <div class="file-preview-modal">
         <div class="file-preview-modal__header">
           <div class="file-preview-modal__title">
             <component
-              :is="IMAGE_EXTENSIONS.includes(file.originalFileName.split('.').pop()?.toLowerCase() ?? '') ? ImageIcon : FileText"
+              :is="PREVIEWABLE_IMAGE_EXTENSIONS.includes(file.originalFileName.split('.').pop()?.toLowerCase() ?? '') ? ImageIcon : FileText"
               :size="16"
             />
             <span>{{ file.originalFileName }}</span>
           </div>
           <div class="file-preview-modal__meta">
-            {{ formatSize(file.fileSize) }} · {{ file.contentType || '未知类型' }}
+            {{ formatFileSize(file.fileSize) }} · {{ file.contentType || '未知类型' }}
           </div>
-          <button class="file-preview-modal__close" type="button" @click="emit('close')">
+          <button class="file-preview-modal__close" type="button" aria-label="关闭预览" @click="emit('close')">
             <X :size="18" />
           </button>
         </div>
@@ -129,7 +122,7 @@ watch(() => props.open, (open) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-overlay, rgba(0, 0, 0, 0.5));
   backdrop-filter: blur(2px);
 }
 
@@ -143,7 +136,7 @@ watch(() => props.open, (open) => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.2));
   overflow: hidden;
 }
 
@@ -236,7 +229,7 @@ watch(() => props.open, (open) => {
 }
 
 .file-preview-text pre {
-  font-family: 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono, 'Cascadia Code', 'Consolas', 'Monaco', monospace);
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;

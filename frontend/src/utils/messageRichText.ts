@@ -19,11 +19,11 @@ function pushTextToken(tokens: MessageInlineToken[], buffer: string) {
 }
 
 function normalizeSource(content: string) {
-  const normalizedLineEndings = content.replace(/\r\n/g, '\n');
-  if (!normalizedLineEndings.includes('\n') && normalizedLineEndings.includes('\\n')) {
-    return normalizedLineEndings.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
-  }
-  return normalizedLineEndings;
+  // 先统一换行符
+  let result = content.replace(/\r\n/g, '\n');
+  // 始终转换字面 \n 和 \t（即使已有真实换行，也可能混合存在）
+  result = result.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  return result;
 }
 
 function parseInlineSegments(content: string): MessageInlineToken[] {
@@ -39,6 +39,7 @@ function parseInlineSegments(content: string): MessageInlineToken[] {
   while (index < content.length) {
     const current = content[index];
 
+    // <br> 标签
     if (content.slice(index, index + 4).toLowerCase() === '<br>') {
       flushBuffer();
       tokens.push({ type: 'linebreak', content: '' });
@@ -60,6 +61,70 @@ function parseInlineSegments(content: string): MessageInlineToken[] {
       continue;
     }
 
+    // 转义的 \$ 不作为数学分隔符
+    if (current === '\\' && content[index + 1] === '$') {
+      buffer += '$';
+      index += 2;
+      continue;
+    }
+
+    // 块级数学 $$...$$ （内联出现在段落中时）
+    if (current === '$' && content[index + 1] === '$') {
+      const end = content.indexOf('$$', index + 2);
+      if (end > index + 2) {
+        flushBuffer();
+        tokens.push({ type: 'math', content: content.slice(index + 2, end) });
+        index = end + 2;
+        continue;
+      }
+    }
+
+    // LaTeX 行内数学 \(...\)
+    if (current === '\\' && content[index + 1] === '(') {
+      const end = content.indexOf('\\)', index + 2);
+      if (end > index + 2) {
+        flushBuffer();
+        tokens.push({ type: 'math', content: content.slice(index + 2, end) });
+        index = end + 2;
+        continue;
+      }
+    }
+
+    // LaTeX 块级数学 \[...\]
+    if (current === '\\' && content[index + 1] === '[') {
+      const end = content.indexOf('\\]', index + 2);
+      if (end > index + 2) {
+        flushBuffer();
+        tokens.push({ type: 'math', content: content.slice(index + 2, end) });
+        index = end + 2;
+        continue;
+      }
+    }
+
+    // 行内数学 $...$
+    // 先检查是否为 $$...$$ 的情况（块级数学内联出现在段落中）
+    if (current === '$' && content[index + 1] === '$') {
+      const blockEnd = content.indexOf('$$', index + 2);
+      if (blockEnd > index + 2) {
+        flushBuffer();
+        tokens.push({ type: 'math', content: content.slice(index + 2, blockEnd) });
+        index = blockEnd + 2;
+        continue;
+      }
+    }
+
+    // 行内数学 $...$（确保不是 $$ 的起始）
+    if (current === '$' && content[index + 1] !== '$') {
+      const end = content.indexOf('$', index + 1);
+      if (end > index + 1 && content[end + 1] !== '$') {
+        flushBuffer();
+        tokens.push({ type: 'math', content: content.slice(index + 1, end) });
+        index = end + 1;
+        continue;
+      }
+    }
+
+    // 粗体 **text**
     if (content.slice(index, index + 2) === '**') {
       const end = content.indexOf('**', index + 2);
       if (end > index + 2) {
@@ -70,6 +135,7 @@ function parseInlineSegments(content: string): MessageInlineToken[] {
       }
     }
 
+    // 斜体 *text*
     if (current === '*' && content[index + 1] !== '*') {
       const end = content.indexOf('*', index + 1);
       if (end > index + 1 && content[end - 1] !== ' ') {
@@ -80,21 +146,12 @@ function parseInlineSegments(content: string): MessageInlineToken[] {
       }
     }
 
+    // 行内代码 `code`
     if (current === '`') {
       const end = content.indexOf('`', index + 1);
       if (end > index + 1) {
         flushBuffer();
         tokens.push({ type: 'code', content: content.slice(index + 1, end) });
-        index = end + 1;
-        continue;
-      }
-    }
-
-    if (current === '$' && content[index + 1] !== '$') {
-      const end = content.indexOf('$', index + 1);
-      if (end > index + 1) {
-        flushBuffer();
-        tokens.push({ type: 'math', content: content.slice(index + 1, end) });
         index = end + 1;
         continue;
       }
@@ -189,6 +246,7 @@ export function parseMessageBlocks(content: string): MessageBlock[] {
       continue;
     }
 
+    // 块级数学 $$ ... $$（独占行）
     if (trimmed === '$$') {
       const mathLines: string[] = [];
       index += 1;
@@ -203,7 +261,30 @@ export function parseMessageBlocks(content: string): MessageBlock[] {
       continue;
     }
 
+    // 块级数学 $$...$$ （单行）
     if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      blocks.push({ type: 'math', content: trimmed.slice(2, -2).trim() });
+      index += 1;
+      continue;
+    }
+
+    // LaTeX 块级数学 \[...\] （独占行）
+    if (trimmed === '\\[') {
+      const mathLines: string[] = [];
+      index += 1;
+      while (index < lines.length && lines[index].trim() !== '\\]') {
+        mathLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) {
+        index += 1;
+      }
+      blocks.push({ type: 'math', content: mathLines.join('\n').trim() });
+      continue;
+    }
+
+    // LaTeX 块级数学 \[...\] （单行）
+    if (trimmed.startsWith('\\[') && trimmed.endsWith('\\]') && trimmed.length > 4) {
       blocks.push({ type: 'math', content: trimmed.slice(2, -2).trim() });
       index += 1;
       continue;
@@ -255,7 +336,17 @@ export function parseMessageBlocks(content: string): MessageBlock[] {
         break;
       }
 
-      if (currentTrimmed.startsWith('```') || currentTrimmed === '$$') {
+      if (currentTrimmed.startsWith('```') || currentTrimmed === '$$' || currentTrimmed === '\\[') {
+        break;
+      }
+
+      // 单行 $$...$$ 也应该中断段落
+      if (currentTrimmed.startsWith('$$') && currentTrimmed.endsWith('$$') && currentTrimmed.length > 4) {
+        break;
+      }
+
+      // 单行 \[...\] 也应该中断段落
+      if (currentTrimmed.startsWith('\\[') && currentTrimmed.endsWith('\\]') && currentTrimmed.length > 4) {
         break;
       }
 

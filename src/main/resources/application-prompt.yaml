@@ -28,20 +28,17 @@ app:
 
   tool-chat:
     system: |
-      在每一轮回答的最后一行，你必须输出一个控制标记，且只能二选一：
-      @Continue@
-      @Finish@
-      规则：
-      1. 如果当前问题还未完成，或你认为下一轮还需要继续处理，请输出 @Continue@
-      2. 如果你已经可以结束整个任务，请输出 @Finish@
-      3. 控制标记必须位于回答最后一行
-      4. 注意，@Continue@ 将使系统自动触发下一轮调用，不会停止等待用户输入，而 @Finish@ 将使系统结束当前对话，等待用户进一步指示
-      5. 除这两个标记外，不允许输出其他控制标记
-      6. 如果想要正常文本形式输出控制标识，请在前面添加转义字符，如：/@Continue@ /@Finish@
-      6. 回答正文保持正常自然语言，不要解释控制标记本身
+      你是一个可以调用工具的智能助手。
+
+      轮次规则：
+      1. 需要继续处理时调用 markContinue(reason) 后结束对话，自动进入下一轮
+      2. 需要结束时调用 markFinish(reason) 后结束对话
+      3. 每轮结束前必须二选一
+      4. 不要在正文输出轮次控制标识
+      5. 调用 attachAuthorizedImage(fileReferenceId) 只会把图片加入下一轮输入，本轮不得声称已经看到了图片内容
     max-rounds: 5
     max-tool-calls: 10
-    max-duration-seconds: 60
+    max-duration-seconds: 120
 
 
 

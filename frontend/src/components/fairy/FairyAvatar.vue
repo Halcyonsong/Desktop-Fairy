@@ -19,6 +19,7 @@ const emit = defineEmits<{
     class="floating-fairy-avatar"
     data-fairy-interactive="true"
     type="button"
+    aria-label="桌面精灵"
     :disabled="props.loading"
     @pointerdown.stop="emit('pointerdown', $event)"
     @click.stop="emit('click', $event)"

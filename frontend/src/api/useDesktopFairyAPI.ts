@@ -1,4 +1,4 @@
-import type { BackendLogResult, FilePathsResult } from '@/main';
+import type { BackendLogResult, FilePathsResult } from '@/types/electron';
 
 /**
  * 封装对 window.desktopFairy Electron bridge 的访问

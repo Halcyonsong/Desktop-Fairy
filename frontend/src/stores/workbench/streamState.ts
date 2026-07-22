@@ -2,7 +2,6 @@ import { CHAT_EVENT, TOOL_STAGE } from '@/config/chatConstants';
 import {
   parseModelStreamErrorEvent,
   parseToolStatusEvent,
-  stripControlMarkers,
   toEventText,
 } from '@/utils/chatMessages';
 import type { ChatEvent, ChatMessage, ChatMessageBlock } from '@/types/chat';
@@ -15,7 +14,7 @@ function ensureTiming(message: ChatMessage) {
 }
 
 // 当前轮号：优先从消息上的 _currentRound 字段读取（由 ROUND_START 设置）
-// 这样不再依赖 @Continue@ 检测来推进轮次，而是用后端 ROUND_START 的权威 round 号
+// 轮次推进完全由后端的 ROUND_START 事件驱动，不再依赖正文标记
 function currentRound(message: ChatMessage) {
   const meta = message as ChatMessage & { _currentRound?: number };
   return meta._currentRound ?? 1;
@@ -76,9 +75,7 @@ export function handleStreamEvent(
   sessionId: string,
   setReasoningText: (sessionId: string, value: string) => void,
   setReasoningMessageId: (sessionId: string, messageId: string) => void,
-  reasoningBySession: Record<string, string>,
 ) {
-  void reasoningBySession;
   const text = toEventText(event.eventData);
 
   if (event.eventType === CHAT_EVENT.reasoning) {
@@ -106,22 +103,35 @@ export function handleStreamEvent(
       return;
     }
 
-    // ROUND_START 是权威轮次信号：用它来更新当前 round 号
-    // 这样即使 @Continue@ 标记出现问题，轮次也能正确推进
-    if (entry.stage === TOOL_STAGE.roundStart) {
+    // 记录到 toolStatuses（所有 stage 都记录，用于历史重建）
+    if (!assistantMessage.toolStatuses) {
+      assistantMessage.toolStatuses = [];
+    }
+    assistantMessage.toolStatuses.push(entry);
+
+    // 始终从 TOOL_STATUS 事件的 round 字段更新当前轮号
+    // 这样后续的 REASONING/DATA 事件会正确归属到新轮次的 block
+    const previousRound = currentRound(assistantMessage);
+    const roundChanged = entry.round !== previousRound && entry.round > 0;
+    if (roundChanged) {
       setCurrentRound(assistantMessage, entry.round);
+    }
+
+    // ROUND_START / ROUND_CONTINUE / LOOP_START：仅更新轮号，不创建 tool block
+    // 轮次分隔由 MessageRow.vue 的 showRoundDivider 自动渲染
+    if (
+      entry.stage === TOOL_STAGE.roundStart
+      || entry.stage === TOOL_STAGE.roundContinue
+      || entry.stage === TOOL_STAGE.loopStart
+    ) {
+      return;
     }
 
     // MEDIA_REQUEST_START 插入为 inline block，在出现位置展示
     // 当后续 REASONING/DATA 到达时标记为 completed
     if (entry.stage === TOOL_STAGE.mediaRequestStart) {
-      // 标记之前未完成的 media-status block 为 completed
-      const blocks = assistantMessage.blocks ?? [];
-      for (const b of blocks) {
-        if (b.type === 'media-status' && b.mediaStatus === 'waiting') {
-          b.mediaStatus = 'completed';
-        }
-      }
+      // 复用已封装的函数，确保响应式行为一致
+      markMediaStatusCompleted(assistantMessage);
       // 插入新的 media-status block
       appendBlock(assistantMessage, {
         type: 'media-status',
@@ -129,25 +139,17 @@ export function handleStreamEvent(
         text: entry.message,
         mediaStatus: 'waiting',
       });
-
-      if (!assistantMessage.toolStatuses) {
-        assistantMessage.toolStatuses = [];
-      }
-      assistantMessage.toolStatuses.push(entry);
       return;
     }
 
+    // 其他 stage（TOOL_CALL / ROUND_FINISH / ROUND_LIMIT / TOOL_LIMIT / TIME_LIMIT / TOOL_RESULT）
+    // 创建 tool block 展示
     appendBlock(assistantMessage, {
       type: 'tool',
       round: entry.round,
       text: entry.message,
       toolStatus: entry,
     });
-
-    if (!assistantMessage.toolStatuses) {
-      assistantMessage.toolStatuses = [];
-    }
-    assistantMessage.toolStatuses.push(entry);
     return;
   }
 
@@ -162,11 +164,6 @@ export function handleStreamEvent(
       text: entry.message,
       toolStatus: entry,
     });
-
-    if (!assistantMessage.toolStatuses) {
-      assistantMessage.toolStatuses = [];
-    }
-    assistantMessage.toolStatuses.push(entry);
     return;
   }
 
@@ -181,22 +178,16 @@ export function handleStreamEvent(
     assistantMessage.status = 'streaming';
     setReasoningMessageId(sessionId, assistantMessage.id);
 
-    // 不再用 @Continue@ 检测来推进轮次
+    // 正文直接追加，不做标记裁剪（后端已切换为工具决策，不再输出控制标记）
     // 轮次推进完全由 ROUND_START 事件驱动
-    // 这里只做正文追加和标记裁剪
     const round = currentRound(assistantMessage);
     const existing = lastBlock(assistantMessage, 'content');
     if (existing) {
-      const rawContent = existing.text + text;
-      updateLastBlock(assistantMessage, 'content', stripControlMarkers(rawContent));
+      updateLastBlock(assistantMessage, 'content', existing.text + text);
     } else {
-      const stripped = stripControlMarkers(text);
-      // 裁剪后为空（如 @Loop@ 头部标记）时不创建 content 块
-      // 否则空 content 块会排在 ROUND_START tool 块和 reasoning 块之前，
-      // 导致正文显示在轮次提示和思考按钮上方（顺序错乱）
-      // 实际正文到达时会在正确位置创建 content 块
-      if (stripped.trim()) {
-        appendBlock(assistantMessage, { type: 'content', round, text: stripped });
+      // 正文为空时不创建 content 块
+      if (text.trim()) {
+        appendBlock(assistantMessage, { type: 'content', round, text });
       }
     }
     return;
@@ -249,28 +240,29 @@ export function handleStreamEvent(
 
       // 如果有部分输出内容，把 partialContent 作为正文展示
       if (errorEvent.partialOutput && errorEvent.partialContent) {
-        const partialText = stripControlMarkers(errorEvent.partialContent);
-        assistantMessage.content += partialText;
+        assistantMessage.content += errorEvent.partialContent;
 
         const round = currentRound(assistantMessage);
         const existing = lastBlock(assistantMessage, 'content');
         if (existing) {
-          updateLastBlock(assistantMessage, 'content', stripControlMarkers(existing.text + partialText));
-        } else if (partialText.trim()) {
-          appendBlock(assistantMessage, { type: 'content', round, text: partialText });
+          updateLastBlock(assistantMessage, 'content', existing.text + errorEvent.partialContent);
+        } else if (errorEvent.partialContent.trim()) {
+          appendBlock(assistantMessage, { type: 'content', round, text: errorEvent.partialContent });
         }
       }
     } else {
       // 兜底：eventData 不是结构化对象，按旧逻辑处理纯文本
-      const text = toEventText(event.eventData);
-      assistantMessage.content += text ? `\n${text}` : '';
+      const fallbackText = toEventText(event.eventData);
+      if (fallbackText.trim()) {
+        assistantMessage.content += `\n${fallbackText}`;
 
-      const round = currentRound(assistantMessage);
-      const existing = lastBlock(assistantMessage, 'content');
-      if (existing) {
-        updateLastBlock(assistantMessage, 'content', stripControlMarkers(existing.text + text));
-      } else {
-        appendBlock(assistantMessage, { type: 'content', round, text: stripControlMarkers(text) });
+        const round = currentRound(assistantMessage);
+        const existing = lastBlock(assistantMessage, 'content');
+        if (existing) {
+          updateLastBlock(assistantMessage, 'content', existing.text + `\n${fallbackText}`);
+        } else {
+          appendBlock(assistantMessage, { type: 'content', round, text: fallbackText });
+        }
       }
     }
   }

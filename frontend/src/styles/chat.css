@@ -1,12 +1,13 @@
 ﻿ .chat-header {
   display: flex;
+  flex-shrink: 0;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
   padding: 0 24px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-overlay);
+  background: var(--color-surface-strong);
 }
 
 .chat-header__title-group {
@@ -73,6 +74,7 @@
 
 .message-list {
   position: relative;
+  flex: 1 1 0;
   min-height: 0;
   overflow: auto;
   padding: 30px min(10vw, 128px) 24px;
@@ -895,6 +897,7 @@
 }
 
 .chat-composer {
+  flex-shrink: 0;
   padding: 10px 24px 22px;
   background: var(--gradient-composer-fade);
 }

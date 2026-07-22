@@ -82,15 +82,20 @@ export async function loadMoreHistory(
       historyState.historyPullMessage.value = uiText.chat.noMoreHistory;
       return;
     }
-    historyState.noMoreHistoryUntil.value = cacheNoMoreHistory(historyState.noMoreHistoryUntil.value, sessionId);
-    historyState.historyPullMessage.value = uiText.chat.noMoreHistory;
-    return;
+    // 缓存已过期：删除缓存条目，继续执行后续加载逻辑以重新向服务端校验是否真无更多历史
+    if (cachedUntil > 0) {
+      const nextCache = { ...historyState.noMoreHistoryUntil.value };
+      delete nextCache[sessionId];
+      historyState.noMoreHistoryUntil.value = nextCache;
+    }
   }
 
   historyState.loadingMoreHistory.value = true;
   historyState.historyPullMessage.value = uiText.chat.loadingHistory;
   try {
     const page = await chatApi.listHistory(sessionId, historyState.nextCursor.value);
+    // 会话可能已切换，校验避免历史数据错乱
+    if (historyState.activeSessionId.value !== sessionId) return;
     applyPageRecords(page.records, page.nextCursor, page.hasMore, page.total);
 
     if (page.hasMore) {

@@ -36,14 +36,16 @@ HELP.md
 # VS Code
 .vscode/
 
-# Frontend build/cache
+# Frontend dependencies / cache
 /frontend/node_modules/
 /frontend/dist/
 /frontend/.vite/
+/frontend/*.tsbuildinfo
+
+# Electron build outputs
 /frontend/release/
 /frontend/bundle-resources/
 /frontend/bundle-staging/
-/frontend/*.tsbuildinfo
 
 # Local temp/cache
 /.codex-npm-cache/
@@ -61,17 +63,20 @@ identifier.sqlite
 .DS_Store
 Thumbs.db
 
-# JRE runtime (should be downloaded at build time, not committed)
+# Bundled runtime and large local artifacts
 /runtime/
+/frontend/release/win-unpacked/
+*.exe
+*.blockmap
 
 # Environment files
 .env
 .env.local
 .env.*.local
-frontend/.env
-frontend/.env.local
-frontend/.env.*.local
+/frontend/.env
+/frontend/.env.local
+/frontend/.env.*.local
 
-# Build artifacts
-*.exe
-*.blockmap
+# Local model / package caches if generated in repo
+/frontend/.electron/
+/frontend/.cache/

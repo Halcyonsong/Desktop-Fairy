@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import { chatApi } from '@/api';
-import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
+import { STORAGE_KEY as CHAT_PREFERENCES_STORAGE_KEY, useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useToastStore } from '@/stores/toastStore';
 import {
   buildGroupedSources,
@@ -28,7 +28,6 @@ import {
 import type { ChatModelConfig, ModelSourceDetail, ModelSourceListItem, ModelSourceTestResult } from '@/types/chat';
 
 const CHAT_MODEL_STORAGE_KEY = 'desktop-fairy.selected-chat-model.v1';
-const MODEL_PARAMS_STORAGE_KEY = 'desktop-fairy.chat-preferences.v1';
 
 interface SelectedChatModelSnapshot {
   sourceCode: string;
@@ -55,6 +54,9 @@ function loadSelectedChatModelSnapshot(): SelectedChatModelSnapshot {
     return { sourceCode: '', modelName: '' };
   }
 }
+
+// 模块级引用：HMR 或重复初始化时用于移除旧的 storage 监听器，避免监听器叠加泄漏
+let storageEventHandler: ((event: StorageEvent) => void) | null = null;
 
 export const useModelSourceStore = defineStore('modelSource', () => {
   const sources = ref<ModelSourceListItem[]>([]);
@@ -162,19 +164,24 @@ export const useModelSourceStore = defineStore('modelSource', () => {
       return;
     }
 
-    // 使用具名函数而非内联匿名函数，便于未来需要 removeEventListener 时移除
-    const handleStorage = (event: StorageEvent) => {
+    // HMR 或重复初始化场景下，先移除旧监听器避免叠加
+    if (storageEventHandler) {
+      window.removeEventListener('storage', storageEventHandler);
+      storageEventHandler = null;
+    }
+
+    storageEventHandler = (event: StorageEvent) => {
       if (event.key === CHAT_MODEL_STORAGE_KEY) {
         void syncSelectedChatModelFromStorage();
         return;
       }
 
-      if (event.key === MODEL_PARAMS_STORAGE_KEY) {
+      if (event.key === CHAT_PREFERENCES_STORAGE_KEY) {
         chatPreferencesStore.syncFromStorage();
       }
     };
 
-    window.addEventListener('storage', handleStorage);
+    window.addEventListener('storage', storageEventHandler);
     syncInitialized.value = true;
   }
 

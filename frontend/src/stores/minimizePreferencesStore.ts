@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { MinimizeBehavior, MinimizePrefs } from '@/main';
+import type { MinimizeBehavior, MinimizePrefs } from '@/types/electron';
 
 /**
  * 最小化行为偏好 Store

@@ -7,6 +7,9 @@ import { useFairyStore } from '@/stores/fairyStore';
 import { useWindowModeStore, type WindowMode } from '@/stores/windowModeStore';
 import { installConsoleInterceptor } from '@/modules/installConsoleInterceptor';
 import './styles/global.css';
+// 业务/IPC 类型与 window.desktopFairy 全局声明已迁移至 @/types/electron；
+// 此处 import type 同时确保该模块（含 declare global 增强）被纳入类型检查程序。
+import type { SessionFileReference } from '@/types/electron';
 
 /**
  * 动态注入 Source Han Serif CN 子集字体的 @font-face 规则。
@@ -37,82 +40,6 @@ function injectSerifFontFace() {
   document.head.appendChild(style);
 }
 
-declare global {
-  interface Window {
-    desktopFairy?: {
-      getWindowMode?: () => Promise<string>;
-      getFairyPreferences?: () => Promise<{ enabled?: boolean }>;
-      resetFairyPosition?: () => Promise<{ x: number; y: number; width: number; height: number }>;
-      beginFairyDrag?: (payload: { screenX: number; screenY: number }) => void;
-      updateFairyDrag?: (payload: { screenX: number; screenY: number }) => void;
-      endFairyDrag?: () => void;
-      setFairyMouseIgnore?: (ignore: boolean) => void;
-      setFairyDragging?: (dragging: boolean) => void;
-      setFairyEnabled?: (enabled: boolean) => void;
-      onForceDisableResidentChat?: (callback: () => void) => void;
-      onEnableFairyFromTray?: (callback: () => void) => void;
-      onBackendReady?: (callback: () => void) => void;
-      getFilePaths?: () => Promise<FilePathsResult>;
-      readBackendLog?: (lines: number) => Promise<BackendLogResult>;
-      // 最小化行为偏好
-      getMinimizePrefs?: () => Promise<MinimizePrefs>;
-      setMinimizePrefs?: (prefs: Partial<MinimizePrefs>) => Promise<MinimizePrefs>;
-      executeMinimize?: (behavior: MinimizeBehavior) => Promise<void>;
-      onAskMinimize?: (callback: () => void) => void;
-      // 文件选择对话框
-      showOpenFileDialog?: () => Promise<string[] | null>;
-      // 截图捕获（options: { hideWindow?: boolean }）
-      captureScreenshot?: (options?: { hideWindow?: boolean }) => Promise<string | null>;
-      // 读取文件为 Data URL（图片预览）
-      readFileAsDataUrl?: (filePath: string) => Promise<string | null>;
-      // 读取文件为文本（文本预览）
-      readFileAsText?: (filePath: string) => Promise<string | null>;
-    };
-  }
-}
-
-export type MinimizeBehavior = 'taskbar' | 'tray';
-
-export interface MinimizePrefs {
-  behavior: MinimizeBehavior;
-  askAgain: boolean;
-}
-
-/** 后端 SessionFileReferenceVO 对应的前端类型 */
-export interface SessionFileReference {
-  fileReferenceId: string;
-  sessionId: string;
-  absolutePath: string;
-  originalFileName: string;
-  contentType: string;
-  fileSize: number;
-  lastKnownModifiedTime: string;
-  status: string;
-  createTime: string;
-  updateTime: string;
-}
-
-export interface FilePathsResult {
-  home: string;
-  localAppData: string;
-  userData: string;
-  paths: Array<{
-    key: string;
-    label: string;
-    path: string;
-    description: string;
-  }>;
-}
-
-export interface BackendLogResult {
-  path: string;
-  content: string;
-  exists: boolean;
-  message?: string;
-  fileSize?: number;
-  lines?: number;
-}
-
 function resolveWindowModeFromLocation(): WindowMode | null {
   const queryMode = new URLSearchParams(window.location.search).get('windowMode');
   if (queryMode === 'fairy' || queryMode === 'workbench') {
@@ -134,14 +61,31 @@ async function resolveInitialWindowMode(): Promise<WindowMode> {
     return locationMode;
   }
 
-  const bridgeMode = await window.desktopFairy?.getWindowMode?.();
-  return bridgeMode === 'fairy' || bridgeMode === 'workbench' ? bridgeMode : 'workbench';
+  // 带超时的 IPC 调用，防止主进程卡死导致永久白屏
+  try {
+    const bridgeMode = await Promise.race([
+      window.desktopFairy?.getWindowMode?.(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('getWindowMode timeout')), 5000),
+      ),
+    ]);
+    return bridgeMode === 'fairy' || bridgeMode === 'workbench' ? bridgeMode : 'workbench';
+  } catch {
+    // IPC 超时或失败，降级为 workbench 模式
+    console.warn('[bootstrap] Failed to resolve window mode, falling back to workbench');
+    return 'workbench';
+  }
 }
 
 async function preloadFairyNativePreferences(fairyStore: ReturnType<typeof useFairyStore>) {
-  const nativePreferences = await window.desktopFairy?.getFairyPreferences?.();
-  if (typeof nativePreferences?.enabled === 'boolean') {
-    fairyStore.hydrateEnabled(nativePreferences.enabled);
+  try {
+    const nativePreferences = await window.desktopFairy?.getFairyPreferences?.();
+    if (typeof nativePreferences?.enabled === 'boolean') {
+      fairyStore.hydrateEnabled(nativePreferences.enabled);
+    }
+  } catch (error) {
+    // IPC 调用失败不阻断启动，降级使用 localStorage 中的值
+    console.warn('[bootstrap] Failed to preload fairy native preferences:', error);
   }
 }
 
@@ -179,9 +123,20 @@ async function bootstrap() {
   window.desktopFairy?.onBackendReady?.(() => {
     backendStatusStore.markReady();
   });
+  window.desktopFairy?.onBackendNotReady?.(() => {
+    backendStatusStore.markNotReady();
+  });
   windowModeStore.setWindowMode(await resolveInitialWindowMode());
 
   app.mount('#app');
 }
 
-void bootstrap();
+// 启动应用，捕获未处理异常防止白屏
+void bootstrap().catch((error) => {
+  console.error('[bootstrap] Fatal error during startup:', error);
+  // 降级：即使初始化失败也尝试 mount 应用
+  const appRoot = document.getElementById('app');
+  if (appRoot && !appRoot.innerHTML) {
+    appRoot.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#1f2329;"><h2>启动失败</h2><p>应用初始化遇到错误，请重启。</p><pre style="font-size:12px;color:#8a9099;">' + String(error) + '</pre></div>';
+  }
+});

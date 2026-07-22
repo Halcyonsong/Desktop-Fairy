@@ -2,6 +2,7 @@ import { chatApi } from '@/api';
 import { uiText } from '@/config/uiText';
 import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
+import { useSessionFileStore } from '@/stores/sessionFileStore';
 import {
   applyHistoryPage,
   cacheNoMoreHistory,
@@ -55,6 +56,8 @@ export async function loadWorkbenchSession(
 
   try {
     const historyPage = await chatApi.listHistory(sessionId);
+    // 会话可能已切换，校验避免历史数据错乱
+    if (state.activeSessionId.value !== sessionId) return;
     applyHistoryPage(
       state,
       reasoning,
@@ -172,6 +175,7 @@ export async function sendWorkbenchMessage(
 
   const modelSourceStore = useModelSourceStore();
   const chatPreferencesStore = useChatPreferencesStore();
+  const sessionFileStore = useSessionFileStore();
   if (!modelSourceStore.selectedChatModelConfig) {
     state.errorMessage.value = uiText.errors.modelRequired;
     return;
@@ -217,6 +221,11 @@ export async function sendWorkbenchMessage(
       model: modelSourceStore.selectedChatModelConfig,
       signal: abortController.signal,
       enableToolCalling: chatPreferencesStore.effectiveToolCallEnabled,
+      // 传入附件信息：只有工具对话时才有意义
+      attachmentFileReferenceIds: sessionFileStore.hasFiles
+        ? sessionFileStore.files.map((f) => f.fileReferenceId)
+        : undefined,
+      primaryAttachmentFileReferenceId: sessionFileStore.primaryAttachmentFileReferenceId || undefined,
       onEvent: (event) => {
         handleStreamEvent(
           event,
@@ -224,7 +233,6 @@ export async function sendWorkbenchMessage(
           sessionId,
           reasoning.setReasoningText,
           reasoning.setReasoningMessageId,
-          reasoning.reasoningBySession.value,
         );
         commitMessageChange();
       },

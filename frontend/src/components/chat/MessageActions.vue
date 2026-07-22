@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { Check, Copy, RotateCcw, Trash2 } from '@lucide/vue';
 import { UI_TIMING } from '@/config/uiConstants';
 import { uiText } from '@/config/uiText';
@@ -41,6 +41,14 @@ async function handleCopy() {
     }, UI_TIMING.copyFeedbackResetMs);
   }
 }
+
+// 组件卸载时清理复制反馈定时器，避免卸载后回调仍执行
+onBeforeUnmount(() => {
+  if (resetTimer) {
+    clearTimeout(resetTimer);
+    resetTimer = null;
+  }
+});
 </script>
 
 <template>

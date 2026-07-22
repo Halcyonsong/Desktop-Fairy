@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppShell from '@/components/layout/AppShell.vue';
+import AuthorizedPathsBar from '@/components/chat/AuthorizedPathsBar.vue';
 import ChatComposer from '@/components/chat/ChatComposer.vue';
 import ChatHeader from '@/components/chat/ChatHeader.vue';
 import MessageList from '@/components/chat/MessageList.vue';
@@ -11,10 +12,12 @@ import { useBackendStatusStore } from '@/stores/backendStatusStore';
 import { useFairyChatStore } from '@/stores/fairyChatStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
 import { useSessionFileStore } from '@/stores/sessionFileStore';
+import { useSessionFolderStore } from '@/stores/sessionFolderStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useUiStore } from '@/stores/uiStore';
 import { useWorkbenchStore } from '@/stores/workbenchStore';
 import { customText } from '@/config/customText';
+import { uiText } from '@/config/uiText';
 import type { ChatSession } from '@/types/chat';
 
 const workbench = useWorkbenchStore();
@@ -23,9 +26,13 @@ const modelSourceStore = useModelSourceStore();
 const fairyChatStore = useFairyChatStore();
 const chatPreferencesStore = useChatPreferencesStore();
 const sessionFileStore = useSessionFileStore();
+const sessionFolderStore = useSessionFolderStore();
 const toast = useToastStore();
 
 const sessionSidebarRef = ref<InstanceType<typeof SessionSidebar> | null>(null);
+
+// 刷新历史成功提示的显示时长（毫秒）
+const REFRESH_SUCCESS_HINT_MS = 1200;
 
 async function handleBatchDelete(sessionIds: string[]) {
   let successCount = 0;
@@ -108,13 +115,17 @@ async function handleSidebarSelect(sessionId: string) {
   if (fairyChatStore.isTemporaryChatSession(sessionId)) {
     fairyChatStore.selectTemporaryChat();
     sessionFileStore.reset();
+    sessionFolderStore.reset();
     return;
   }
 
   fairyChatStore.deselectTemporaryChat();
   await workbench.loadSession(sessionId);
-  // 加载该会话的已授权文件列表
-  await sessionFileStore.loadForSession(sessionId);
+  // 加载该会话的已授权文件和文件夹列表
+  await Promise.all([
+    sessionFileStore.loadForSession(sessionId),
+    sessionFolderStore.loadForSession(sessionId),
+  ]);
 }
 
 function handleToggleToolCall() {
@@ -156,6 +167,14 @@ async function handleComposerSend(question: string) {
   }
 }
 
+async function handleRevokeFile(fileReferenceId: string) {
+  await sessionFileStore.removeFile(fileReferenceId);
+}
+
+async function handleRevokeFolder(folderReferenceId: string) {
+  await sessionFolderStore.removeFolder(folderReferenceId);
+}
+
 function handleComposerStop() {
   if (fairyChatStore.selected) {
     fairyChatStore.stopTemporaryChat();
@@ -175,17 +194,17 @@ function handleRefreshHistory() {
     .then(() => {
       if (!workbench.errorMessage) {
         refreshHistorySuccess.value = true;
-        toast.success('历史已刷新');
+        toast.success(uiText.chat.historyRefreshed);
         setTimeout(() => {
           refreshHistorySuccess.value = false;
-        }, 1200);
+        }, REFRESH_SUCCESS_HINT_MS);
       } else {
         toast.error(workbench.errorMessage);
       }
     })
     .catch(() => {
       refreshHistorySuccess.value = false;
-      toast.error('刷新历史失败');
+      toast.error(uiText.errors.refreshHistoryFailed);
     });
 }
 
@@ -194,7 +213,7 @@ function handleCreateSession() {
   uiStore.switchView('chat');
   void workbench.createSession().catch((error) => {
     console.error('[WorkbenchView] 创建会话失败:', error);
-    toast.error('创建会话失败');
+    toast.error(uiText.errors.createSessionFailed);
   });
 }
 
@@ -221,15 +240,17 @@ async function handleRenameSession(sessionId: string, title: string) {
 onMounted(() => {
   const backendStatusStore = useBackendStatusStore();
 
+  let stopWatch: (() => void) | null = null;
+
   async function initWhenReady() {
     if (!backendStatusStore.ready) {
       // 等待后端 ready（Electron 环境下由 IPC 通知触发）
       await new Promise<void>((resolve) => {
-        const stop = watch(
+        stopWatch = watch(
           () => backendStatusStore.ready,
           (ready) => {
             if (ready) {
-              stop();
+              stopWatch = null;
               resolve();
             }
           },
@@ -241,6 +262,11 @@ onMounted(() => {
   }
 
   void initWhenReady();
+
+  // 组件卸载时清理 watch，防止内存泄漏
+  onBeforeUnmount(() => {
+    stopWatch?.();
+  });
 });
 </script>
 
@@ -277,6 +303,13 @@ onMounted(() => {
               :refreshing="currentHistoryRefreshing"
               :refresh-success="refreshHistorySuccess"
               @refresh="handleRefreshHistory"
+            />
+            <AuthorizedPathsBar
+              v-if="!fairyChatStore.selected"
+              :files="sessionFileStore.files"
+              :folders="sessionFolderStore.folders"
+              @revoke-file="handleRevokeFile"
+              @revoke-folder="handleRevokeFolder"
             />
             <MessageList
               :session-key="activeSessionId"

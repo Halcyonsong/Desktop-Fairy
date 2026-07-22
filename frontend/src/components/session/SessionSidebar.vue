@@ -655,10 +655,6 @@ function isSessionChecked(sessionId: string) {
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .session-modal__message--error {
   color: var(--color-danger, var(--color-text));
 }

@@ -50,7 +50,7 @@ const iconMap = {
   border-radius: 8px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.12));
   color: var(--color-text);
   font-size: 13px;
   line-height: 1.5;

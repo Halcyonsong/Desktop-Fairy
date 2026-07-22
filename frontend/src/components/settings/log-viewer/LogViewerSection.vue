@@ -652,11 +652,6 @@ const stats = computed(() => ({
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 code {
   padding: 1px 4px;
   background: var(--color-surface);

@@ -11,6 +11,9 @@ import type {
 const TERMINAL_STATUSES: LocalModelTaskStatus[] = ['SUCCESS', 'FAILED'];
 const POLL_INTERVAL_MS = 1000;
 
+// 模块级变量：HMR 重建时旧 timer 可被新 store 实例清除，避免定时器泄漏
+let pollTimer: number | null = null;
+
 export const useLocalModelInstallerStore = defineStore('localModelInstaller', () => {
   const status = ref<LocalModelTaskStatus>('IDLE');
   const actionType = ref<LocalModelActionType | null>(null);
@@ -23,7 +26,6 @@ export const useLocalModelInstallerStore = defineStore('localModelInstaller', ()
   const startBusy = ref(false);
   const stopBusy = ref(false);
   const logPanelOpen = ref(false);
-  let pollTimer: number | null = null;
 
   function clearPollTimer() {
     if (pollTimer !== null) {
@@ -57,6 +59,8 @@ export const useLocalModelInstallerStore = defineStore('localModelInstaller', ()
 
     try {
       const detail = await chatApi.getLocalTestTask(currentTaskId);
+      // 在 await 之后检查轮询是否已被停止
+      if (!polling.value) return;
       taskDetail.value = detail;
       status.value = detail.status;
       errorMessage.value = detail.status === 'FAILED' ? detail.message?.trim() || detail.stderr?.trim() || '本地脚本任务失败' : '';
@@ -68,6 +72,8 @@ export const useLocalModelInstallerStore = defineStore('localModelInstaller', ()
 
       scheduleNextPoll();
     } catch (error) {
+      // 已停止，不重试
+      if (!polling.value) return;
       errorMessage.value = error instanceof Error ? error.message : '查询本地脚本任务失败';
       stopPolling();
     }

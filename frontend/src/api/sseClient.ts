@@ -37,26 +37,35 @@ export async function consumeSseStream(response: Response, onEvent: (event: Chat
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
 
-    const chunks = buffer.split(/\r?\n\r?\n/);
-    buffer = chunks.pop() ?? '';
+      const chunks = buffer.split(/\r?\n\r?\n/);
+      buffer = chunks.pop() ?? '';
 
-    for (const chunk of chunks) {
-      const event = parseSseEvent(chunk);
-      if (event) {
-        onEvent(event);
+      for (const chunk of chunks) {
+        const event = parseSseEvent(chunk);
+        if (event) {
+          onEvent(event);
+        }
+      }
+
+      if (done) {
+        const tailEvent = parseSseEvent(buffer);
+        if (tailEvent) {
+          onEvent(tailEvent);
+        }
+        break;
       }
     }
-
-    if (done) {
-      const tailEvent = parseSseEvent(buffer);
-      if (tailEvent) {
-        onEvent(tailEvent);
-      }
-      break;
+  } finally {
+    // 确保异常时也释放 reader 锁，避免资源泄漏
+    try {
+      await reader.cancel();
+    } catch {
+      // reader 可能已被取消，忽略
     }
   }
 }

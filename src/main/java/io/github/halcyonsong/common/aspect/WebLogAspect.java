@@ -1,5 +1,6 @@
 package io.github.halcyonsong.common.aspect;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -171,7 +172,9 @@ public class WebLogAspect {
         }
 
         try {
-            Map<String, Object> beanMap = objectMapper.convertValue(value, Map.class);
+            Map<String, Object> beanMap = objectMapper.convertValue(value, new TypeReference<>() {
+                    }
+            );
             return sanitizeMap(beanMap);
         } catch (IllegalArgumentException exception) {
             return value.getClass().getSimpleName();

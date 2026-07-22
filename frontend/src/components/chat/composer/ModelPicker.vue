@@ -44,6 +44,10 @@ const filteredGroups = computed(() => {
     .filter((group) => group.items.length > 0);
 });
 
+function isSelected(modelName: string): boolean {
+  return modelName === props.modelLabel;
+}
+
 watch(
   () => props.open,
   (open) => {
@@ -60,16 +64,18 @@ watch(
     type="button"
     :class="{ 'model-select--placeholder': !modelLabel, 'model-select--open': open }"
     :title="customText.composer.selectModel"
+    aria-haspopup="listbox"
+    :aria-expanded="open"
     @click="emit('toggle')"
   >
     <span class="model-select__text">{{ modelButtonLabel }}</span>
     <ChevronDown :size="16" :class="{ 'model-select__chevron--open': open }" />
   </button>
 
-  <div v-if="open" class="model-picker-popover">
+  <div v-if="open" class="model-picker-popover" role="listbox">
     <template v-if="hasSelectableModels">
       <div class="model-picker-filter">
-        <input v-model="filterKeyword" type="text" :placeholder="customText.composer.filterModelsPlaceholder" />
+        <input v-model="filterKeyword" type="text" :placeholder="customText.composer.filterModelsPlaceholder" aria-label="筛选模型" />
       </div>
 
       <div v-if="filteredGroups.length > 0" class="model-picker-scroll">
@@ -83,6 +89,8 @@ watch(
                 :key="`${item.sourceCode}-${model.modelName}`"
                 class="model-picker-option"
                 type="button"
+                role="option"
+                :aria-selected="isSelected(model.modelName)"
                 @click="emit('selectModel', item.sourceCode, model.modelName)"
               >
                 {{ model.modelName }}

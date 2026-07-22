@@ -104,6 +104,7 @@ function statusText(status: ChatMessage['status']) {
       class="back-to-bottom-button"
       type="button"
       :title="uiText.chat.backToBottom"
+      aria-label="回到底部"
       @click="scrollToBottom()"
     >
       <ChevronDown :size="18" />

@@ -5,9 +5,8 @@ import MessageActions from '@/components/chat/MessageActions.vue';
 import RichMessageContent from '@/components/chat/RichMessageContent.vue';
 import { TOOL_STAGE } from '@/config/chatConstants';
 import { uiText } from '@/config/uiText';
-import { stripControlMarkers } from '@/utils/chatMessages';
 import { formatTime } from '@/utils/date';
-import type { ChatMessage, ChatMessageBlock } from '@/types/chat';
+import type { ChatMessage, ChatMessageBlock, ErrorType, ToolStage } from '@/types/chat';
 
 const props = defineProps<{
   message: ChatMessage;
@@ -23,7 +22,7 @@ const emit = defineEmits<{
   delete: [];
 }>();
 
-const displayContent = computed(() => stripControlMarkers(props.message.content));
+const displayContent = computed(() => props.message.content);
 
 // 使用 blocks 序列渲染，如果没有 blocks 则兜底为单 content
 const blocks = computed<ChatMessageBlock[]>(() => {
@@ -61,8 +60,11 @@ function isToolBlockOpen(blockId: string) {
   return toolOpenState[blockId] ?? false;
 }
 
-function stageLabel(stage: string): string {
-  return (uiText.toolCall.stages as Record<string, string>)[stage] ?? stage;
+function stageLabel(stage: ToolStage | undefined): string {
+  if (!stage) {
+    return '';
+  }
+  return uiText.toolCall.stages[stage] ?? stage;
 }
 
 // 异常终止 stage：表示工具循环因限制被强制结束
@@ -70,7 +72,6 @@ const TERMINATION_STAGES: Set<string> = new Set([
   TOOL_STAGE.roundLimit,
   TOOL_STAGE.toolLimit,
   TOOL_STAGE.timeLimit,
-  TOOL_STAGE.directiveLimit,
 ]);
 
 function isTerminationStage(stage: string): boolean {
@@ -91,8 +92,8 @@ function isToolActive(index: number): boolean {
 }
 
 // 错误类型标签：从 uiText.errors.errorTypes 查找，找不到则原样返回
-function errorTypeLabel(errorType: string): string {
-  return (uiText.errors.errorTypes as Record<string, string>)[errorType] ?? errorType;
+function errorTypeLabel(errorType: ErrorType): string {
+  return uiText.errors.errorTypes[errorType] ?? errorType;
 }
 
 // 从后端的 message 字段中提取纯错误提示
@@ -131,7 +132,7 @@ function showRoundDivider(index: number) {
 </script>
 
 <template>
-  <article class="message-row" :class="`message-row--${message.role}`">
+  <article class="message-row" :class="`message-row--${message.role}`" :aria-label="message.role === 'user' ? '用户消息' : '助手消息'">
     <div class="message-avatar" aria-hidden="true">
       <UserRound v-if="message.role === 'user'" :size="18" />
       <Bot v-else :size="18" />
@@ -157,6 +158,8 @@ function showRoundDivider(index: number) {
                 class="reasoning-toggle-button"
                 type="button"
                 :title="isReasoningBlockOpen(block.id) ? '收起思考内容' : '展开思考内容'"
+                :aria-expanded="isReasoningBlockOpen(block.id)"
+                :aria-controls="`reasoning-${block.id}`"
                 @click="toggleReasoningBlock(block.id)"
               >
                 <ChevronDown :size="14" :class="{ 'rotate-180': isReasoningBlockOpen(block.id) }" />
@@ -166,7 +169,7 @@ function showRoundDivider(index: number) {
                 </span>
               </button>
               <Transition name="reasoning-collapse">
-                <p v-if="isReasoningBlockOpen(block.id)" class="reasoning-inline-body">
+                <p v-if="isReasoningBlockOpen(block.id)" :id="`reasoning-${block.id}`" class="reasoning-inline-body">
                   {{ block.text }}
                 </p>
               </Transition>
@@ -188,6 +191,8 @@ function showRoundDivider(index: number) {
                   class="tool-panel__header"
                   type="button"
                   :title="isToolBlockOpen(block.id) ? '收起参数' : '展开参数'"
+                  :aria-expanded="isToolBlockOpen(block.id)"
+                  :aria-controls="`tool-${block.id}`"
                   @click="toggleToolBlock(block.id)"
                 >
                   <Wrench :size="13" class="tool-panel__icon" />
@@ -196,28 +201,28 @@ function showRoundDivider(index: number) {
                   <ChevronDown :size="12" :class="{ 'rotate-180': isToolBlockOpen(block.id) }" class="tool-panel__chevron" />
                 </button>
                 <Transition name="tool-collapse">
-                  <pre v-if="isToolBlockOpen(block.id) && block.toolStatus?.toolArguments" class="tool-panel__args">{{ formatToolArguments(block.toolStatus.toolArguments) }}</pre>
+                  <pre v-if="isToolBlockOpen(block.id) && block.toolStatus?.toolArguments" :id="`tool-${block.id}`" class="tool-panel__args">{{ formatToolArguments(block.toolStatus.toolArguments) }}</pre>
                 </Transition>
               </div>
 
               <!-- 异常终止 stage：显示警告样式 -->
               <div v-else-if="isTerminationStage(block.toolStatus?.stage ?? '')" class="tool-termination">
                 <AlertTriangle :size="13" />
-                <span class="tool-termination__stage">{{ stageLabel(block.toolStatus?.stage ?? '') }}</span>
+                <span class="tool-termination__stage">{{ stageLabel(block.toolStatus?.stage) }}</span>
                 <span class="tool-termination__message">{{ block.text }}</span>
               </div>
 
               <!-- TOOL_RESULT：显示结果状态 -->
               <div v-else-if="isToolResultStage(block.toolStatus?.stage ?? '')" class="tool-result">
                 <CheckCircle2 :size="13" class="tool-result__icon" />
-                <span class="tool-result__label">{{ stageLabel(block.toolStatus?.stage ?? '') }}</span>
+                <span class="tool-result__label">{{ stageLabel(block.toolStatus?.stage) }}</span>
                 <span v-if="block.toolStatus?.toolName" class="tool-result__name">{{ block.toolStatus.toolName }}</span>
               </div>
 
               <!-- 其他 stage：普通单行展示 -->
               <div v-else class="message-block__tool">
                 <Wrench :size="12" />
-                <span class="message-block__tool-stage">{{ stageLabel(block.toolStatus?.stage ?? '') }}</span>
+                <span class="message-block__tool-stage">{{ stageLabel(block.toolStatus?.stage) }}</span>
                 <span class="message-block__tool-message">{{ block.text }}</span>
               </div>
             </div>
@@ -234,9 +239,11 @@ function showRoundDivider(index: number) {
               </div>
             </div>
 
-            <!-- 轮次分隔线 -->
-            <div v-if="showRoundDivider(index)" class="message-round__divider">
-              <span>第 {{ block.round }} 轮结束，进入下一轮</span>
+            <!-- 轮次分隔线：当当前块与下一块的 round 不同时显示 -->
+            <div v-if="showRoundDivider(index)" class="message-round__divider" role="separator">
+              <span class="message-round__divider-label">
+                {{ uiText.toolCall.entry.replace('{round}', String(block.round)) }} · 进入第 {{ blocks[index + 1]?.round }} 轮
+              </span>
             </div>
           </template>
         </template>

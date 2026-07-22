@@ -33,10 +33,6 @@ interface MouseIgnoreControllerOptions {
 export function useFairyMouseIgnoreController(options: MouseIgnoreControllerOptions) {
   const isPinned = ref(false);
 
-  function resolveValue<T>(source: T | (() => T)): T {
-    return typeof source === 'function' ? (source as () => T)() : source;
-  }
-
   function getIsNative() {
     const source = options.isNativeFairyWindow;
     if (typeof source === 'function') {
