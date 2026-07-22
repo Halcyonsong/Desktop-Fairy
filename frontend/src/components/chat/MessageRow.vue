@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue';
-import { AlertTriangle, Bot, ChevronDown, LoaderCircle, UserRound, Wrench } from '@lucide/vue';
+import { AlertTriangle, Bot, CheckCircle2, ChevronDown, ImageIcon, LoaderCircle, UserRound, Wrench } from '@lucide/vue';
 import MessageActions from '@/components/chat/MessageActions.vue';
 import RichMessageContent from '@/components/chat/RichMessageContent.vue';
 import { TOOL_STAGE } from '@/config/chatConstants';
@@ -81,6 +81,15 @@ function isToolCallStage(stage: string): boolean {
   return stage === TOOL_STAGE.toolCall;
 }
 
+function isToolResultStage(stage: string): boolean {
+  return stage === TOOL_STAGE.toolResult;
+}
+
+// 判断 tool 块是否处于流式过程中（消息还在 streaming 且是最后一个 tool 块）
+function isToolActive(index: number): boolean {
+  return props.message.status === 'streaming' && index === blocks.value.length - 1;
+}
+
 // 错误类型标签：从 uiText.errors.errorTypes 查找，找不到则原样返回
 function errorTypeLabel(errorType: string): string {
   return (uiText.errors.errorTypes as Record<string, string>)[errorType] ?? errorType;
@@ -108,7 +117,6 @@ function formatToolArguments(args: string | null | undefined): string {
   }
 }
 
-// 判断某个 block 是否是最后一个且消息正在流式中
 function isStreamingBlock(index: number) {
   return props.message.status === 'streaming' && index === blocks.value.length - 1;
 }
@@ -173,29 +181,37 @@ function showRoundDivider(index: number) {
             </div>
 
             <!-- tool 块 -->
-            <div v-else-if="block.type === 'tool'" class="message-block message-block--tool" :class="{ 'message-block--tool-termination': isTerminationStage(block.toolStatus?.stage ?? '') }">
-              <!-- TOOL_CALL: 可展开收起的小面板 -->
-              <div v-if="isToolCallStage(block.toolStatus?.stage ?? '') && block.toolStatus?.toolName" class="tool-panel">
+            <div v-else-if="block.type === 'tool'" class="message-block message-block--tool" :class="{ 'message-block--tool-termination': isTerminationStage(block.toolStatus?.stage ?? ''), 'message-block--tool-result': isToolResultStage(block.toolStatus?.stage ?? '') }">
+              <!-- TOOL_CALL: 带工具名和 loading 的可展开面板 -->
+              <div v-if="isToolCallStage(block.toolStatus?.stage ?? '')" class="tool-panel">
                 <button
                   class="tool-panel__header"
                   type="button"
                   :title="isToolBlockOpen(block.id) ? '收起参数' : '展开参数'"
                   @click="toggleToolBlock(block.id)"
                 >
-                  <Wrench :size="12" />
-                  <span class="tool-panel__title">调用工具：{{ block.toolStatus.toolName }}</span>
-                  <ChevronDown :size="12" :class="{ 'rotate-180': isToolBlockOpen(block.id) }" />
+                  <Wrench :size="13" class="tool-panel__icon" />
+                  <span class="tool-panel__title">{{ block.toolStatus?.toolName || '工具调用' }}</span>
+                  <LoaderCircle v-if="isToolActive(index)" :size="12" class="tool-panel__spinner spin-icon" />
+                  <ChevronDown :size="12" :class="{ 'rotate-180': isToolBlockOpen(block.id) }" class="tool-panel__chevron" />
                 </button>
                 <Transition name="tool-collapse">
-                  <pre v-if="isToolBlockOpen(block.id)" class="tool-panel__args">{{ formatToolArguments(block.toolStatus.toolArguments) }}</pre>
+                  <pre v-if="isToolBlockOpen(block.id) && block.toolStatus?.toolArguments" class="tool-panel__args">{{ formatToolArguments(block.toolStatus.toolArguments) }}</pre>
                 </Transition>
               </div>
 
               <!-- 异常终止 stage：显示警告样式 -->
               <div v-else-if="isTerminationStage(block.toolStatus?.stage ?? '')" class="tool-termination">
-                <AlertTriangle :size="12" />
+                <AlertTriangle :size="13" />
                 <span class="tool-termination__stage">{{ stageLabel(block.toolStatus?.stage ?? '') }}</span>
                 <span class="tool-termination__message">{{ block.text }}</span>
+              </div>
+
+              <!-- TOOL_RESULT：显示结果状态 -->
+              <div v-else-if="isToolResultStage(block.toolStatus?.stage ?? '')" class="tool-result">
+                <CheckCircle2 :size="13" class="tool-result__icon" />
+                <span class="tool-result__label">{{ stageLabel(block.toolStatus?.stage ?? '') }}</span>
+                <span v-if="block.toolStatus?.toolName" class="tool-result__name">{{ block.toolStatus.toolName }}</span>
               </div>
 
               <!-- 其他 stage：普通单行展示 -->
@@ -203,6 +219,18 @@ function showRoundDivider(index: number) {
                 <Wrench :size="12" />
                 <span class="message-block__tool-stage">{{ stageLabel(block.toolStatus?.stage ?? '') }}</span>
                 <span class="message-block__tool-message">{{ block.text }}</span>
+              </div>
+            </div>
+
+            <!-- media-status 块：图片处理状态提示（inline，在出现位置展示） -->
+            <div v-else-if="block.type === 'media-status'" class="message-block message-block--media-status" :class="{ 'message-block--media-status-completed': block.mediaStatus === 'completed' }">
+              <div v-if="block.mediaStatus === 'waiting'" class="media-status-item media-status-item--waiting">
+                <ImageIcon :size="14" class="media-status-item__icon" />
+                <span class="media-status-item__text">{{ block.text }}</span>
+              </div>
+              <div v-else class="media-status-item media-status-item--completed">
+                <CheckCircle2 :size="14" class="media-status-item__icon" />
+                <span class="media-status-item__text">图片已加载</span>
               </div>
             </div>
 

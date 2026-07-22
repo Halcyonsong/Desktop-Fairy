@@ -60,45 +60,6 @@ public class DevToolFunctions {
         }
     }
 
-    // 获取本地Java版本
-    @Tool(description = "Get local Java version and vendor if Java is available")
-    public String getJavaVersion() {
-        String javaVersion = System.getProperty("java.version", "");
-        String javaVendor = System.getProperty("java.vendor", "");
-
-        if (!StringUtils.hasText(javaVersion) && !StringUtils.hasText(javaVendor)) {
-            return "java is not available";
-        }
-
-        return """
-                javaVersion=%s
-                javaVendor=%s
-                """.formatted(
-                javaVersion,
-                javaVendor
-        ).trim();
-    }
-
-    // 获取本地Python版本
-    @Tool(description = "Get local Python version if Python is installed")
-    public String getPythonVersion() {
-        return readCommandVersion(
-                List.of("python", "--version"),
-                List.of("py", "--version"),
-                "python is not available"
-        );
-    }
-
-    // 获取本地Git版本
-    @Tool(description = "Get local Git version if Git is installed")
-    public String getGitVersion() {
-        return readCommandVersion(
-                List.of("git", "--version"),
-                null,
-                "git is not available"
-        );
-    }
-
     // 读取命令版本
     private String readCommandVersion(List<String> primaryCommand,
                                       List<String> fallbackCommand,

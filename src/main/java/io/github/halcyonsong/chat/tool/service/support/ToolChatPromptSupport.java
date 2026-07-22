@@ -2,6 +2,8 @@ package io.github.halcyonsong.chat.tool.service.support;
 
 import io.github.halcyonsong.chat.common.config.prompt.ToolChatProperties;
 import io.github.halcyonsong.chat.common.support.PromptContextSupport;
+import io.github.halcyonsong.chat.tool.service.support.status.ToolLoopRuntimeState;
+import io.github.halcyonsong.sessionfile.service.SessionFileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -12,6 +14,7 @@ public class ToolChatPromptSupport {
 
     private final ToolChatProperties toolChatProperties;
     private final PromptContextSupport promptContextSupport;
+    private final SessionFileService sessionFileService;
 
     // 拼接基础系统提示词，自定义系统提示词和历史摘要上下文
     public String resolveSystemPrompt(String sessionId, String systemPromptOverride) {
@@ -59,6 +62,34 @@ public class ToolChatPromptSupport {
                 round,
                 maxRounds
         );
+    }
+
+    // 拼接会话文件提示词
+    public String appendSessionFilePrompt(String sessionId, String prompt) {
+        long authorizedFileCount = sessionFileService.countBySessionId(sessionId);
+
+        if (authorizedFileCount <= 0) {
+            return prompt + """
+
+                当前会话没有已授权文件。
+                如果需要使用本地文件，必须先让用户主动授权。
+                """;
+        }
+
+        return prompt + """
+
+            当前会话存在 %d 个已授权文件可供使用。
+            如果你需要查看具体文件列表，请先调用 listAuthorizedFiles 工具。
+            
+            文件使用规则：
+            1. 读取纯文本、代码、日志、配置等文本型文件时，优先调用 readAuthorizedFileAsText(fileReferenceId, maxChars)
+            2. 处理图片时，优先调用 attachAuthorizedImage(fileReferenceId)，让系统在下一轮尝试以多模态方式提供图片输入
+            3. readAuthorizedImageAsText(fileReferenceId) 当前不可用，不应作为主要工具依赖
+            4. readAuthorizedImageAsText 的结果通常不如真正视觉理解完整
+            5. 不要假设未查询文件的具体内容
+            6. 不要尝试直接访问未授权路径
+            7. 如果你调用了 attachAuthorizedImage(fileReferenceId)，本轮最后应输出 @Continue@，以便下一轮真正使用图片输入
+            """.formatted(authorizedFileCount);
     }
 
     // 拼接运行时约束提示词

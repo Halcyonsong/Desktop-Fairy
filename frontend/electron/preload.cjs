@@ -30,5 +30,23 @@ contextBridge.exposeInMainWorld('desktopFairy', {
   // 系统信息
   getFilePaths: () => ipcRenderer.invoke('system:get-file-paths'),
   readBackendLog: (lines) => ipcRenderer.invoke('system:read-backend-log', lines),
+
+  // 最小化行为偏好
+  getMinimizePrefs: () => ipcRenderer.invoke('window:get-minimize-prefs'),
+  setMinimizePrefs: (prefs) => ipcRenderer.invoke('window:set-minimize-prefs', prefs),
+  executeMinimize: (behavior) => ipcRenderer.invoke('window:execute-minimize', behavior),
+  onAskMinimize: (callback) => {
+    ipcRenderer.removeAllListeners('window:ask-minimize');
+    ipcRenderer.on('window:ask-minimize', () => callback?.());
+  },
+
+  // 文件选择对话框（返回路径数组，支持多选）
+  showOpenFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+  // 截图捕获（options: { hideWindow?: boolean }，返回临时文件路径或 null）
+  captureScreenshot: (options) => ipcRenderer.invoke('screenshot:capture', options),
+  // 读取文件为 Data URL（用于图片预览）
+  readFileAsDataUrl: (filePath) => ipcRenderer.invoke('file:read-as-data-url', filePath),
+  // 读取文件为文本（用于文本文件预览）
+  readFileAsText: (filePath) => ipcRenderer.invoke('file:read-as-text', filePath),
 });
 

@@ -69,7 +69,11 @@ export const useAppearanceStore = defineStore('appearance', () => {
       globalSerifFontEnabled: globalSerifFontEnabled.value,
       themeMode: themeMode.value,
     };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('[AppearanceStore] Failed to persist to localStorage:', error);
+    }
   }
 
   function applyAppearance() {

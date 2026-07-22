@@ -60,3 +60,18 @@ identifier.sqlite
 # OS files
 .DS_Store
 Thumbs.db
+
+# JRE runtime (should be downloaded at build time, not committed)
+/runtime/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Build artifacts
+*.exe
+*.blockmap

@@ -216,7 +216,7 @@ export async function sendWorkbenchMessage(
       systemPrompt: options?.systemPromptOverride ?? chatPreferencesStore.activeSystemPrompt,
       model: modelSourceStore.selectedChatModelConfig,
       signal: abortController.signal,
-      enableToolCalling: chatPreferencesStore.toolCallEnabled,
+      enableToolCalling: chatPreferencesStore.effectiveToolCallEnabled,
       onEvent: (event) => {
         handleStreamEvent(
           event,

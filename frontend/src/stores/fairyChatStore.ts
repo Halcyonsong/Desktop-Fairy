@@ -157,7 +157,11 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
     }
 
     if (!temporarySessionId.value || !lastSessionActivityAt.value) {
-      window.localStorage.removeItem(STORAGE_KEY);
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        console.error('[FairyChatStore] Failed to remove from localStorage:', error);
+      }
       return;
     }
 
@@ -172,7 +176,11 @@ export const useFairyChatStore = defineStore('fairyChat', () => {
       version: localVersion.value,
     };
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('[FairyChatStore] Failed to persist to localStorage:', error);
+    }
   }
 
   function syncFromStorage() {

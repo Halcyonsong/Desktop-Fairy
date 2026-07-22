@@ -15,7 +15,8 @@ public enum ToolChatStageEnum {
     DIRECTIVE_LIMIT("DIRECTIVE_LIMIT", "控制标记缺失超限"),
     ROUND_LIMIT("ROUND_LIMIT", "轮次超限"),
     TOOL_LIMIT("TOOL_LIMIT", "工具调用次数超限"),
-    TIME_LIMIT("TIME_LIMIT", "执行时长超限");
+    TIME_LIMIT("TIME_LIMIT", "执行时长超限"),
+    MEDIA_REQUEST_START("MEDIA_REQUEST_START", "正在获取图片并等待模型处理");
 
     private final String code;
     private final String desc;

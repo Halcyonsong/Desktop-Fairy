@@ -3,6 +3,7 @@ import { resolveApiUrl } from '@/config/runtimeConfig';
 import { consumeSseStream } from '@/api/sseClient';
 import { normalizeHistoryMessageIds } from '@/utils/chatMessages';
 import type { ChatHistoryPage, ChatSession, SendChatOptions } from '@/types/chat';
+import type { SessionFileReference } from '@/main';
 
 function normalizeHistoryPage(page: ChatHistoryPage): ChatHistoryPage {
   return {
@@ -87,6 +88,29 @@ export const sessionApi = {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+    });
+  },
+};
+
+export const sessionFileApi = {
+  /** 授权一个本地文件，返回文件引用信息 */
+  authorize(sessionId: string, absolutePath: string) {
+    return requestJson<SessionFileReference>('/api/session-file/authorize', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId, absolutePath }),
+    });
+  },
+
+  /** 列出会话下所有已授权文件 */
+  listBySession(sessionId: string) {
+    return requestJson<SessionFileReference[]>(`/api/session-file/list?sessionId=${encodeURIComponent(sessionId)}`);
+  },
+
+  /** 删除某个授权文件引用 */
+  remove(fileReferenceId: string, sessionId: string) {
+    return requestJson<void>(`/api/session-file/${encodeURIComponent(fileReferenceId)}?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
     });
   },
 };

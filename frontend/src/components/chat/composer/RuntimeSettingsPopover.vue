@@ -66,6 +66,20 @@ function updateContent(value: string) {
     emit('update-system-prompt', props.selectedPromptSlot, { content: value });
   }
 }
+
+// 数值校验：将 Temperature 夹紧到 [0, 2]，非数字时清空（恢复"默认"占位符）
+function clampTemperature(value: string): string {
+  const num = parseFloat(value);
+  if (isNaN(num)) return '';
+  return String(Math.min(2, Math.max(0, num)));
+}
+
+// 数值校验：将 MaxTokens 夹紧到 [1, 200000]，非数字时清空（恢复"默认"占位符）
+function clampMaxTokens(value: string): string {
+  const num = parseInt(value, 10);
+  if (isNaN(num)) return '';
+  return String(Math.min(200000, Math.max(1, num)));
+}
 </script>
 
 <template>
@@ -122,10 +136,13 @@ function updateContent(value: string) {
       <span>{{ customText.runtimePopover.temperatureLabel }}</span>
       <input
         :value="props.temperatureInput"
-        type="text"
-        inputmode="decimal"
+        type="number"
+        min="0"
+        max="2"
+        step="0.1"
         :placeholder="customText.runtimePopover.defaultPlaceholder"
-        @input="emit('update:temperature-input', ($event.target as HTMLInputElement).value)"
+        @input="emit('update:temperature-input', clampTemperature(($event.target as HTMLInputElement).value))"
+        @change="emit('update:temperature-input', clampTemperature(($event.target as HTMLInputElement).value))"
       />
     </label>
 
@@ -134,10 +151,13 @@ function updateContent(value: string) {
       <span>{{ customText.runtimePopover.maxTokensLabel }}</span>
       <input
         :value="props.maxTokensInput"
-        type="text"
-        inputmode="numeric"
+        type="number"
+        min="1"
+        max="200000"
+        step="1"
         :placeholder="customText.runtimePopover.defaultPlaceholder"
-        @input="emit('update:max-tokens-input', ($event.target as HTMLInputElement).value)"
+        @input="emit('update:max-tokens-input', clampMaxTokens(($event.target as HTMLInputElement).value))"
+        @change="emit('update:max-tokens-input', clampMaxTokens(($event.target as HTMLInputElement).value))"
       />
     </label>
   </div>

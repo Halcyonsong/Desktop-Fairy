@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, desktopCapturer, ipcMain, nativeImage, screen, session } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -23,6 +23,14 @@ let tray = null;
 let isQuitting = false;
 let fairyWindowEnabled = false;
 let mainWindowHiddenToTray = false;
+
+// 最小化行为偏好
+// minimizeBehavior: 'taskbar' | 'tray'，默认 'taskbar'
+// minimizeAskAgain: 是否每次最小化时弹窗询问，默认 true
+// isExecutingMinimize: 标记正在执行用户选择的最小化操作，避免 minimize 事件再次拦截
+let minimizeBehavior = 'taskbar';
+let minimizeAskAgain = true;
+let isExecutingMinimize = false;
 
 // 桌面精灵拖动控制器，在 createFairyWindow 后初始化
 let fairyDragController = null;
@@ -207,8 +215,14 @@ function persistFairyBounds() {
 
 function readFairyPreferences() {
   const raw = readJsonFile(getFairyPreferencesFilePath(), {});
+  const obj = raw && typeof raw === 'object' ? raw : {};
+  // 同步到模块级变量
+  minimizeBehavior = obj.minimizeBehavior === 'tray' ? 'tray' : 'taskbar';
+  minimizeAskAgain = obj.minimizeAskAgain !== false; // 默认 true
   return {
-    enabled: Boolean(raw && typeof raw === 'object' ? raw.enabled : false),
+    enabled: Boolean(obj.enabled),
+    minimizeBehavior,
+    minimizeAskAgain,
   };
 }
 
@@ -216,7 +230,19 @@ function persistFairyPreferences() {
   try {
     const preferencesPath = getFairyPreferencesFilePath();
     ensureParentDir(preferencesPath);
-    fs.writeFileSync(preferencesPath, JSON.stringify({ enabled: fairyWindowEnabled }, null, 2), 'utf8');
+    fs.writeFileSync(
+      preferencesPath,
+      JSON.stringify(
+        {
+          enabled: fairyWindowEnabled,
+          minimizeBehavior,
+          minimizeAskAgain,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
   } catch {
     // ignore persistence failures
   }
@@ -475,12 +501,37 @@ function createMainWindow() {
     mainWindow.show();
   });
 
-  mainWindow.on('minimize', (event) => {
-    if (isQuitting) {
+  mainWindow.on('minimize', () => {
+    if (isQuitting || isExecutingMinimize) {
       return;
     }
-    event.preventDefault();
-    hideMainWindow();
+
+    // 注意：Electron 的 minimize 事件不支持 event.preventDefault()，
+    // 窗口已经最小化。不能同步调用 restore()/hide()，否则会导致
+    // GPU 合成器状态混乱出现白屏。必须延迟到下一个事件循环执行。
+
+    // 需要询问：延迟恢复窗口以显示弹窗
+    if (minimizeAskAgain) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && !isQuitting && !isExecutingMinimize) {
+          mainWindow.restore();
+          mainWindow.focus();
+          mainWindow.webContents.send('window:ask-minimize');
+        }
+      }, 100);
+      return;
+    }
+
+    // 不再询问：按已保存的偏好执行
+    if (minimizeBehavior === 'tray') {
+      // 延迟隐藏到托盘，避免与 minimize 操作冲突
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
+          hideMainWindow();
+        }
+      }, 100);
+    }
+    // behavior === 'taskbar'：窗口已经最小化到任务栏，不做处理
   });
 
   mainWindow.on('close', (event) => {
@@ -574,7 +625,215 @@ function registerIpc() {
 
   ipcMain.handle('fairy:get-preferences', () => ({
     enabled: fairyWindowEnabled,
+    minimizeBehavior,
+    minimizeAskAgain,
   }));
+
+  // ===== 最小化行为偏好 =====
+  ipcMain.handle('window:get-minimize-prefs', () => ({
+    behavior: minimizeBehavior,
+    askAgain: minimizeAskAgain,
+  }));
+
+  ipcMain.handle('window:set-minimize-prefs', (event, prefs) => {
+    if (prefs && typeof prefs === 'object') {
+      if (prefs.behavior === 'tray' || prefs.behavior === 'taskbar') {
+        minimizeBehavior = prefs.behavior;
+      }
+      if (typeof prefs.askAgain === 'boolean') {
+        minimizeAskAgain = prefs.askAgain;
+      }
+      persistFairyPreferences();
+    }
+    return { behavior: minimizeBehavior, askAgain: minimizeAskAgain };
+  });
+
+  // 执行实际最小化操作（前端弹窗选择后调用）
+  ipcMain.handle('window:execute-minimize', (event, behavior) => {
+    // 设置标志，避免 minimize 事件再次拦截
+    isExecutingMinimize = true;
+    if (behavior === 'tray') {
+      hideMainWindow();
+    } else {
+      // taskbar：直接最小化到任务栏
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.minimize();
+      }
+    }
+    // 在下一个事件循环重置标志，确保 minimize 事件已被跳过
+    setImmediate(() => {
+      isExecutingMinimize = false;
+    });
+  });
+
+  // ===== 文件选择对话框（支持多选） =====
+  ipcMain.handle('dialog:open-file', async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog({
+      title: '选择文件',
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths;  // 返回路径数组
+  });
+
+  // ===== 截图区域选择捕获 =====
+  let screenshotOverlayWindow = null;
+
+  ipcMain.handle('screenshot:capture', async (event, options) => {
+    const path = require('path');
+    const fs = require('fs');
+    const hideWindow = options && options.hideWindow;
+
+    // 如果需要隐藏窗口，先隐藏主窗口并等待渲染完成
+    if (hideWindow && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+      // 等待窗口完全隐藏后再截图
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    // 获取主屏幕尺寸
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
+
+    // 先捕获全屏画面
+    let fullImageBuffer;
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: screenWidth, height: screenHeight },
+      });
+      if (!sources || sources.length === 0) return null;
+      fullImageBuffer = sources[0].thumbnail.toPNG();
+    } catch (err) {
+      console.error('[Screenshot] Capturer failed:', err);
+      return null;
+    }
+
+    // 创建透明覆盖窗口让用户选择区域
+    return new Promise((resolve) => {
+      screenshotOverlayWindow = new BrowserWindow({
+        width: screenWidth,
+        height: screenHeight,
+        x: 0,
+        y: 0,
+        fullscreen: true,
+        transparent: true,
+        frame: false,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        webPreferences: {
+          preload: path.join(__dirname, 'screenshot-preload.cjs'),
+          contextIsolation: true,
+        },
+      });
+
+      screenshotOverlayWindow.loadFile(path.join(__dirname, 'screenshot-overlay.html'));
+
+      let resolved = false;
+
+      function cleanup() {
+        if (screenshotOverlayWindow && !screenshotOverlayWindow.isDestroyed()) {
+          screenshotOverlayWindow.close();
+          screenshotOverlayWindow = null;
+        }
+      }
+
+      function resolveOnce(value) {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        // 截图完成后恢复主窗口
+        if (hideWindow && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+        resolve(value);
+      }
+
+      // 用户选择区域后裁剪
+      ipcMain.once('screenshot:select', async (event, rect) => {
+        try {
+          // 获取物理像素坐标（处理 DPI 缩放）
+          const scaleFactor = primaryDisplay.scaleFactor || 1;
+          const cropRect = {
+            x: Math.round(rect.x * scaleFactor),
+            y: Math.round(rect.y * scaleFactor),
+            width: Math.round(rect.width * scaleFactor),
+            height: Math.round(rect.height * scaleFactor),
+          };
+
+          const fullImage = nativeImage.createFromBuffer(fullImageBuffer);
+          const croppedImage = fullImage.crop(cropRect);
+          const croppedBuffer = croppedImage.toPNG();
+
+          // 保存到临时目录
+          const tempDir = path.join(app.getPath('temp'), 'desktop-fairy-screenshots');
+          if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+          }
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const fileName = `screenshot-${timestamp}.png`;
+          const filePath = path.join(tempDir, fileName);
+          fs.writeFileSync(filePath, croppedBuffer);
+
+          resolveOnce(filePath);
+        } catch (err) {
+          console.error('[Screenshot] Crop failed:', err);
+          resolveOnce(null);
+        }
+      });
+
+      // 用户取消
+      ipcMain.once('screenshot:cancel', () => {
+        resolveOnce(null);
+      });
+
+      // 窗口失焦也取消
+      screenshotOverlayWindow.on('blur', () => {
+        resolveOnce(null);
+      });
+
+      // 超时自动取消（30秒）
+      setTimeout(() => resolveOnce(null), 30000);
+    });
+  });
+
+  // ===== 文件预览读取 =====
+  ipcMain.handle('file:read-as-data-url', async (event, filePath) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+      const buffer = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase().slice(1);
+      const mimeMap = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        webp: 'image/webp', bmp: 'image/bmp', gif: 'image/gif',
+      };
+      const mime = mimeMap[ext] || 'application/octet-stream';
+      const base64 = buffer.toString('base64');
+      return `data:${mime};base64,${base64}`;
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('file:read-as-text', async (event, filePath) => {
+    const fs = require('fs');
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      // 限制 50000 字符避免卡浏览器
+      if (content.length > 50000) {
+        return content.slice(0, 50000) + '\n\n[文件内容已截断，仅显示前 50000 字符]';
+      }
+      return content;
+    } catch {
+      return null;
+    }
+  });
 
   ipcMain.handle('fairy:reset-position', () => resetFairyBounds());
 

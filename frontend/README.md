@@ -1,4 +1,4 @@
-# Desktop Fairy Frontend
+﻿# Desktop Fairy Frontend
 
 这是 Desktop Fairy 的前端与桌面壳工程，包含：
 
@@ -7,23 +7,26 @@
 - electron-builder 打包配置
 - 桌面精灵 native 拖动能力（基于 koffi 调用 Windows user32.dll）
 
-当前版本：`v0.2.1`
+当前版本：`v0.3.0`
 
-如果你只想了解整个项目，请优先阅读根目录的 [README.md](/E:/develop/idea/Desktop-Fairy/README.md)。
+如果你只想了解整个项目，请优先阅读根目录的 [README.md](../README.md)。
 
 ## 目录说明
 
 ```text
 frontend
 ├─ src/                               # Vue 页面、组件、状态、API 封装
+│  ├─ components/chat/composer/       # 聊天输入区组件（附件 chips、文件预览、模型选择等）
 │  ├─ components/fairy/controllers/   # 桌面精灵相关 composables
 │  ├─ modules/vosk/                   # Vosk 语音识别模块
-│  ├─ stores/                         # Pinia 状态管理
-│  ├─ api/                            # API 封装
+│  ├─ stores/                         # Pinia 状态管理（含 sessionFileStore 附件管理）
+│  ├─ api/                            # API 封装（含 sessionFileApi 文件授权接口）
 │  └─ styles/                         # 全局样式与主题 tokens
 ├─ electron/                          # Electron 主进程脚本与打包准备脚本
-│  ├─ main.cjs                        # 主进程入口
-│  ├─ preload.cjs                     # 预加载脚本
+│  ├─ main.cjs                        # 主进程入口（含文件对话框、截图捕获、文件预览 IPC）
+│  ├─ preload.cjs                     # 预加载脚本（暴露文件选择、截图、预览 API）
+│  ├─ screenshot-overlay.html         # 截图区域选择覆盖窗口 UI
+│  ├─ screenshot-preload.cjs          # 截图覆盖窗口 preload
 │  ├─ fairyDragController.cjs         # 精灵拖动控制器（native + fallback）
 │  └─ prepare-package.cjs             # 打包资源整理脚本
 ├─ dist/                              # 前端构建产物
@@ -40,7 +43,7 @@ frontend
 安装依赖：
 
 ```powershell
-cd E:\develop\idea\Desktop-Fairy\frontend
+cd <repo-root>/frontend
 npm install
 ```
 
@@ -110,12 +113,39 @@ npm run desktop:pack
 - Electron 主进程优先使用内置 JRE，而不是依赖系统 Java
 - 版本说明以根目录 `README.md` 和 `frontend/package.json` 为准
 
+## Electron IPC 通道
+
+当前通过 `preload.cjs` 暴露到渲染进程的 IPC 通道：
+
+| 通道 | 说明 |
+|------|------|
+| `dialog:open-file` | 文件选择对话框，支持多选，返回路径数组 |
+| `screenshot:capture` | 区域截图捕获，支持 `hideWindow` 选项隐藏主窗口后截图 |
+| `file:read-as-data-url` | 读取文件为 base64 Data URL（用于图片预览） |
+| `file:read-as-text` | 读取文件为 UTF-8 文本（用于文本文件预览，限制 50000 字符） |
+
+截图流程：先捕获全屏画面 → 创建透明覆盖窗口让用户拖拽选择区域 → 按 DPI 缩放裁剪 → 保存到系统临时目录。
+
+## 附件系统架构
+
+附件系统由以下部分组成：
+
+- `stores/sessionFileStore.ts`：管理当前会话的已授权文件列表（加载/授权/删除/清空）
+- `api/sessionApi.ts` 中的 `sessionFileApi`：与后端 `/session-file` REST API 交互
+- `components/chat/composer/AttachmentChips.vue`：附件 chip 展示组件
+- `components/chat/composer/FilePreview.vue`：附件预览弹窗组件
+- `config/customText.ts`：附件相关文案配置
+
+附件授权与聊天请求解耦：文件先通过 REST API 授权到会话，再由后端工具调用链路读取。
+
 ## 维护建议
 
 如果你后续继续维护这个目录，建议遵守下面几条：
 
 - 页面逻辑放 `src/`
 - Electron 启动与打包逻辑只放 `electron/`
+- 截图覆盖窗口的 HTML/preload 也放 `electron/`，不要放 `src/`
+- 新增 IPC 通道时同步更新 `preload.cjs`、`src/main.ts` 类型声明、本 README 的 IPC 通道表
 - 不把后端业务说明堆进前端 README
-- 任何桌面打包相关改动，都同步更新根 README 的“打包/分发”部分
+- 任何桌面打包相关改动，都同步更新根 README 的"打包/分发"部分
 - 如果版本号变更，同时同步 `frontend/package.json` 与相关 README

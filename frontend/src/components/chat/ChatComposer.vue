@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2, Wrench } from '@lucide/vue';
+import { Camera, FileUp, LoaderCircle, Mic, Paperclip, SendHorizontal, SlidersHorizontal, Square, Undo2, Wrench } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import AttachmentChips from '@/components/chat/composer/AttachmentChips.vue';
+import FilePreview from '@/components/chat/composer/FilePreview.vue';
 import ModelPicker from '@/components/chat/composer/ModelPicker.vue';
 import RuntimeSettingsPopover from '@/components/chat/composer/RuntimeSettingsPopover.vue';
 import { appConfig } from '@/config/appConfig';
+import { customText } from '@/config/customText';
 import { uiText } from '@/config/uiText';
+import { useSessionFileStore } from '@/stores/sessionFileStore';
+import { useToastStore } from '@/stores/toastStore';
 import { useVoskVoiceController } from '@/modules/vosk/useVoskVoiceController';
 import type { SelectableModelGroup, SystemPromptEntry, SystemPromptSlot } from '@/types/chat';
+import type { SessionFileReference } from '@/main';
 
 const props = defineProps<{
   sending: boolean;
@@ -22,6 +28,9 @@ const props = defineProps<{
   autoFocus: boolean;
   allowEmptySend?: boolean;
   toolCallEnabled?: boolean;
+  toolCallLocked?: boolean;
+  sessionId?: string;
+  isTemporarySession?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -104,6 +113,167 @@ function toggleSettings() {
   }
 }
 
+// ===== 附件管理 =====
+const sessionFileStore = useSessionFileStore();
+const toast = useToastStore();
+const isDragging = ref(false);
+const attachmentMenuOpen = ref(false);
+const capturingScreenshot = ref(false);
+
+const attachmentButtonTitle = computed(() => {
+  if (props.isTemporarySession) return customText.composer.attachmentTemporaryDisabled;
+  return customText.composer.addAttachment;
+});
+
+function toggleAttachmentMenu() {
+  if (props.isTemporarySession) {
+    toast.warning(customText.composer.attachmentTemporaryDisabled);
+    return;
+  }
+  attachmentMenuOpen.value = !attachmentMenuOpen.value;
+}
+
+async function handleSelectFiles() {
+  attachmentMenuOpen.value = false;
+  if (props.isTemporarySession || !props.sessionId) {
+    toast.warning(customText.composer.attachmentTemporaryDisabled);
+    return;
+  }
+
+  try {
+    const filePaths = await window.desktopFairy?.showOpenFileDialog?.();
+    if (!filePaths || filePaths.length === 0) return;
+    await sessionFileStore.authorizeFiles(props.sessionId, filePaths);
+  } catch {
+    // toast 已在 store 中处理
+  }
+}
+
+async function handleCaptureScreenshot(hideWindow = false) {
+  attachmentMenuOpen.value = false;
+  if (props.isTemporarySession || !props.sessionId) {
+    toast.warning(customText.composer.attachmentTemporaryDisabled);
+    return;
+  }
+
+  capturingScreenshot.value = true;
+  toast.info(customText.composer.screenshotCapturing);
+  try {
+    const filePath = await window.desktopFairy?.captureScreenshot?.({ hideWindow });
+    if (!filePath) {
+      // 用户取消或失败，不显示错误（取消是正常行为）
+      return;
+    }
+    await sessionFileStore.authorizeFile(props.sessionId, filePath);
+  } catch {
+    // toast 已在 store 中处理
+  } finally {
+    capturingScreenshot.value = false;
+  }
+}
+
+// 点击外部关闭 popover
+function handleAttachmentMenuOutsideClick(event: MouseEvent) {
+  const target = event.target as Node;
+  const popover = document.querySelector('.attachment-menu-popover');
+  const button = document.querySelector('.composer-tool-button--attachment');
+  if (popover && !popover.contains(target) && button && !button.contains(target)) {
+    attachmentMenuOpen.value = false;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleAttachmentMenuOutsideClick);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleAttachmentMenuOutsideClick);
+});
+
+async function handleRemoveAttachment(fileReferenceId: string) {
+  await sessionFileStore.removeFile(fileReferenceId);
+}
+
+// 文件预览
+const previewOpen = ref(false);
+const previewFile = ref<SessionFileReference | null>(null);
+
+function handlePreviewFile(file: SessionFileReference) {
+  previewFile.value = file;
+  previewOpen.value = true;
+}
+
+function closePreview() {
+  previewOpen.value = false;
+}
+
+// 拖拽
+function handleDragOver(event: DragEvent) {
+  event.preventDefault();
+  if (event.dataTransfer?.types.includes('Files')) {
+    isDragging.value = true;
+  }
+}
+
+function handleDragLeave(event: DragEvent) {
+  event.preventDefault();
+  // 仅在离开 composer 区域时取消
+  const related = event.relatedTarget;
+  const currentTarget = event.currentTarget as Node | null;
+  if (!related || !currentTarget || !currentTarget.contains(related as Node)) {
+    isDragging.value = false;
+  }
+}
+
+async function handleDrop(event: DragEvent) {
+  event.preventDefault();
+  isDragging.value = false;
+
+  if (props.isTemporarySession || !props.sessionId) {
+    toast.warning(customText.composer.attachmentTemporaryDisabled);
+    return;
+  }
+
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+
+  // 提取所有有效路径，批量授权
+  const paths: string[] = [];
+  for (const file of Array.from(files)) {
+    const filePath = (file as File & { path?: string }).path;
+    if (filePath) {
+      paths.push(filePath);
+    }
+  }
+  if (paths.length === 0) {
+    toast.error('无法获取文件路径，请使用按钮添加');
+    return;
+  }
+  await sessionFileStore.authorizeFiles(props.sessionId, paths);
+}
+
+// 粘贴
+async function handlePaste(event: ClipboardEvent) {
+  if (props.isTemporarySession || !props.sessionId) return;
+
+  const items = event.clipboardData?.items;
+  if (!items) return;
+
+  // 提取所有有效文件路径，批量授权
+  const paths: string[] = [];
+  for (const item of Array.from(items)) {
+    if (item.kind === 'file') {
+      const file = item.getAsFile();
+      if (!file) continue;
+      const filePath = (file as File & { path?: string }).path;
+      if (filePath) paths.push(filePath);
+    }
+  }
+  if (paths.length > 0) {
+    event.preventDefault();
+    await sessionFileStore.authorizeFiles(props.sessionId, paths);
+  }
+}
+
 function chooseModel(sourceCode: string, modelName: string) {
   emit('selectModel', sourceCode, modelName);
   pickerOpen.value = false;
@@ -148,8 +318,27 @@ watch(
 </script>
 
 <template>
-  <footer class="chat-composer">
+  <footer
+    class="chat-composer"
+    :class="{ 'chat-composer--dragging': isDragging }"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
+    <div v-if="isDragging" class="chat-composer__drag-overlay">
+      <Paperclip :size="24" />
+      <span>{{ customText.composer.dragDropHint }}</span>
+    </div>
+
     <div class="composer-card">
+      <!-- 附件 chip 列表 -->
+      <AttachmentChips
+        v-if="sessionFileStore.files.length > 0"
+        :files="sessionFileStore.files"
+        @remove="handleRemoveAttachment"
+        @preview="handlePreviewFile"
+      />
+
       <textarea
         ref="textareaRef"
         :value="draft"
@@ -157,13 +346,44 @@ watch(
         :placeholder="uiText.composer.placeholder"
         @input="emit('update:draft', ($event.target as HTMLTextAreaElement).value)"
         @keydown="handleKeydown"
+        @paste="handlePaste"
       />
 
       <div class="chat-composer__toolbar">
         <div class="composer-tools-left">
-          <button v-if="appConfig.featureFlags.attachmentEntry" class="composer-tool-button" type="button" :title="uiText.composer.addAttachment">
-            <Paperclip :size="18" />
-          </button>
+          <div class="attachment-entry-wrapper">
+            <button
+              v-if="appConfig.featureFlags.attachmentEntry"
+              class="composer-tool-button composer-tool-button--attachment"
+              :class="{ 'composer-tool-button--active': attachmentMenuOpen }"
+              type="button"
+              :disabled="isTemporarySession || sessionFileStore.authorizing || capturingScreenshot"
+              :title="attachmentButtonTitle"
+              @click="toggleAttachmentMenu"
+            >
+              <LoaderCircle v-if="sessionFileStore.authorizing || capturingScreenshot" :size="18" class="spin" />
+              <Paperclip v-else :size="18" />
+            </button>
+
+            <!-- 附件选项 popover -->
+            <Transition name="attachment-menu">
+              <div v-if="attachmentMenuOpen" class="attachment-menu-popover">
+                <button class="attachment-menu-item" type="button" @click="handleSelectFiles">
+                  <FileUp :size="16" />
+                  <span>{{ customText.composer.selectFile }}</span>
+                </button>
+                <div class="attachment-menu-divider"></div>
+                <button class="attachment-menu-item" type="button" @click="handleCaptureScreenshot(false)">
+                  <Camera :size="16" />
+                  <span>{{ customText.composer.captureScreenshotDirect }}</span>
+                </button>
+                <button class="attachment-menu-item" type="button" @click="handleCaptureScreenshot(true)">
+                  <Camera :size="16" />
+                  <span>{{ customText.composer.captureScreenshotHidden }}</span>
+                </button>
+              </div>
+            </Transition>
+          </div>
 
           <div v-if="appConfig.featureFlags.modelPresetEntry" ref="pickerRef" class="model-select-wrap">
             <ModelPicker
@@ -198,10 +418,13 @@ watch(
           <button
             v-if="appConfig.featureFlags.toolCallEntry"
             class="composer-tool-button composer-tool-button--toggle"
-            :class="{ 'composer-tool-button--active': toolCallEnabled }"
+            :class="{
+              'composer-tool-button--active': toolCallLocked || toolCallEnabled,
+              'composer-tool-button--locked': toolCallLocked,
+            }"
             type="button"
-            :title="toolCallButtonTitle"
-            :aria-pressed="toolCallEnabled ? 'true' : 'false'"
+            :title="toolCallLocked ? customText.composer.attachmentToolLocked : toolCallButtonTitle"
+            :aria-pressed="(toolCallLocked || toolCallEnabled) ? 'true' : 'false'"
             @click="emit('toggle-tool-call')"
           >
             <Wrench :size="18" />
@@ -241,4 +464,7 @@ watch(
       </div>
     </div>
   </footer>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreview :open="previewOpen" :file="previewFile" @close="closePreview" />
 </template>

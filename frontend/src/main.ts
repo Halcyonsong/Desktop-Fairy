@@ -54,8 +54,42 @@ declare global {
       onBackendReady?: (callback: () => void) => void;
       getFilePaths?: () => Promise<FilePathsResult>;
       readBackendLog?: (lines: number) => Promise<BackendLogResult>;
+      // 最小化行为偏好
+      getMinimizePrefs?: () => Promise<MinimizePrefs>;
+      setMinimizePrefs?: (prefs: Partial<MinimizePrefs>) => Promise<MinimizePrefs>;
+      executeMinimize?: (behavior: MinimizeBehavior) => Promise<void>;
+      onAskMinimize?: (callback: () => void) => void;
+      // 文件选择对话框
+      showOpenFileDialog?: () => Promise<string[] | null>;
+      // 截图捕获（options: { hideWindow?: boolean }）
+      captureScreenshot?: (options?: { hideWindow?: boolean }) => Promise<string | null>;
+      // 读取文件为 Data URL（图片预览）
+      readFileAsDataUrl?: (filePath: string) => Promise<string | null>;
+      // 读取文件为文本（文本预览）
+      readFileAsText?: (filePath: string) => Promise<string | null>;
     };
   }
+}
+
+export type MinimizeBehavior = 'taskbar' | 'tray';
+
+export interface MinimizePrefs {
+  behavior: MinimizeBehavior;
+  askAgain: boolean;
+}
+
+/** 后端 SessionFileReferenceVO 对应的前端类型 */
+export interface SessionFileReference {
+  fileReferenceId: string;
+  sessionId: string;
+  absolutePath: string;
+  originalFileName: string;
+  contentType: string;
+  fileSize: number;
+  lastKnownModifiedTime: string;
+  status: string;
+  createTime: string;
+  updateTime: string;
 }
 
 export interface FilePathsResult {

@@ -105,6 +105,11 @@ export async function fetchModelSources(state: ModelSourceStateRefs, filters?: {
       state.activeSourceCode.value = '';
       state.activeSourceDetail.value = null;
     }
+  } catch (error) {
+    state.sources.value = [];
+    state.activeSourceCode.value = '';
+    state.activeSourceDetail.value = null;
+    throw error;
   } finally {
     state.loadingList.value = false;
   }

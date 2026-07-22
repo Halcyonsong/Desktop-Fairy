@@ -111,43 +111,6 @@ public class FileToolFunctions {
         }
     }
 
-    // 获取当前工作目录
-    @Tool(description = "Get current working directory of the backend process")
-    public String getCurrentWorkingDirectory() {
-        return Path.of("").toAbsolutePath().normalize().toString();
-    }
-
-    // 在当前工作目录下搜索文件名
-    @Tool(description = "Search file names under current working directory by keyword")
-    public String searchFileNameUnderCurrentWorkingDirectory(String keyword) {
-        if (!StringUtils.hasText(keyword)) {
-            return "keyword is blank";
-        }
-
-        try {
-            Path rootPath = Path.of("").toAbsolutePath().normalize();
-            List<String> results = new ArrayList<>();
-            String lowerKeyword = keyword.trim().toLowerCase();
-
-            try (var pathStream = Files.walk(rootPath, 6)) {
-                pathStream
-                        .filter(Files::isRegularFile)
-                        .filter(path -> path.getFileName() != null
-                                && path.getFileName().toString().toLowerCase().contains(lowerKeyword))
-                        .limit(50)
-                        .forEach(path -> results.add(rootPath.relativize(path).toString()));
-            }
-
-            if (results.isEmpty()) {
-                return "no file matched keyword: " + keyword;
-            }
-
-            return String.join("\n", results);
-        } catch (Exception exception) {
-            return "failed to search file names globally: " + exception.getMessage();
-        }
-    }
-
     // 列出应用数据目录下的所有文件路径
     @Tool(description = "List all file paths under application data directory recursively")
     public String listApplicationDataFiles() {

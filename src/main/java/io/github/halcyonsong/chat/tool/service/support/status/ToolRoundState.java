@@ -1,4 +1,4 @@
-package io.github.halcyonsong.chat.tool.service.support;
+package io.github.halcyonsong.chat.tool.service.support.status;
 
 import lombok.Getter;
 import org.springframework.util.StringUtils;

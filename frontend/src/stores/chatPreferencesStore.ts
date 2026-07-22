@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
+import { useSessionFileStore } from '@/stores/sessionFileStore';
 import type { SystemPromptEntry, SystemPromptSlot } from '@/types/chat';
 
 const STORAGE_KEY = 'desktop-fairy.chat-preferences.v1';
@@ -105,6 +106,17 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
   const selectedPromptSlot = ref<SystemPromptSlot>(snapshot.selectedPromptSlot ?? 'default');
   const toolCallEnabled = ref(snapshot.toolCallEnabled);
 
+  // 当当前会话有已授权文件时，工具调用被锁定（必须开启）
+  const toolCallLocked = computed(() => {
+    const sessionFileStore = useSessionFileStore();
+    return sessionFileStore.hasFiles;
+  });
+
+  // 实际生效的工具调用开关：被锁定时强制 true
+  const effectiveToolCallEnabled = computed(() => {
+    return toolCallLocked.value ? true : toolCallEnabled.value;
+  });
+
   const hasCustomRuntimeSettings = computed(() =>
     Boolean(
       temperatureInput.value.trim() ||
@@ -134,7 +146,11 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
       selectedPromptSlot: selectedPromptSlot.value,
       toolCallEnabled: toolCallEnabled.value,
     };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('[ChatPreferencesStore] Failed to persist to localStorage:', error);
+    }
   }
 
   function syncFromStorage() {
@@ -195,6 +211,8 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
     selectedPromptSlot,
     activeSystemPrompt,
     toolCallEnabled,
+    toolCallLocked,
+    effectiveToolCallEnabled,
     hasCustomRuntimeSettings,
     syncFromStorage,
     setTemperatureInput,

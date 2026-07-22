@@ -13,9 +13,8 @@ import io.github.halcyonsong.chat.stream.service.support.options.ModelConfigReso
 import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamLifecycleSupport;
 import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamState;
 import io.github.halcyonsong.chat.tool.service.ToolChatService;
-import io.github.halcyonsong.chat.tool.service.support.ToolChatPromptSupport;
-import io.github.halcyonsong.chat.tool.service.support.ToolLoopRuntimeState;
-import io.github.halcyonsong.chat.tool.service.support.ToolStreamingLoopSupport;
+import io.github.halcyonsong.chat.tool.service.support.*;
+import io.github.halcyonsong.chat.tool.service.support.status.ToolLoopRuntimeState;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -60,6 +59,11 @@ public class ToolChatServiceImpl implements ToolChatService {
         chatHistorySupport.appendUserHistory(sessionId, question);
         // 基础系统提示词，系统+用户设定
         String baseSystemPrompt = toolChatPromptSupport.resolveSystemPrompt(sessionId, chatRequestDTO.getSystemPrompt());
+        // 拼接会话文件提示词
+        String fileAwareSystemPrompt = toolChatPromptSupport.appendSessionFilePrompt(
+                sessionId,
+                baseSystemPrompt
+        );
         // 调用开始前设置调用限制和记录状态工具
         ToolLoopRuntimeState runtimeState = new ToolLoopRuntimeState(
                 toolChatProperties.getMaxRounds(),
@@ -68,7 +72,7 @@ public class ToolChatServiceImpl implements ToolChatService {
         );
         // 拼接运行时约束提示词
         String systemPrompt = toolChatPromptSupport.appendRuntimeConstraintPrompt(
-                baseSystemPrompt,
+                fileAwareSystemPrompt,
                 runtimeState.getMaxRounds(),
                 runtimeState.getMaxToolCalls(),
                 runtimeState.getMaxDurationSeconds()

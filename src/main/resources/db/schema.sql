@@ -65,3 +65,26 @@ create table if not exists model_source_model (
 
 create index if not exists idx_model_source_model_source_id
     on model_source_model(source_id);
+
+CREATE TABLE IF NOT EXISTS session_file_reference (
+                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                      file_reference_id TEXT NOT NULL,
+                                                      session_id TEXT NOT NULL,
+                                                      absolute_path TEXT NOT NULL,
+                                                      original_file_name TEXT NOT NULL,
+                                                      content_type TEXT,
+                                                      file_size INTEGER,
+                                                      last_known_modified_time TEXT,
+                                                      status TEXT NOT NULL,
+                                                      create_time TEXT NOT NULL,
+                                                      update_time TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_session_file_reference_file_reference_id
+    ON session_file_reference (file_reference_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_session_file_reference_session_path
+    ON session_file_reference (session_id, absolute_path);
+
+CREATE INDEX IF NOT EXISTS idx_session_file_reference_session_id
+    ON session_file_reference (session_id);

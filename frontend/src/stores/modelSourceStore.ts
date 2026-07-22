@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import { chatApi } from '@/api';
 import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
+import { useToastStore } from '@/stores/toastStore';
 import {
   buildGroupedSources,
   buildSelectableChatGroups,
@@ -74,6 +75,7 @@ export const useModelSourceStore = defineStore('modelSource', () => {
   const selectedChatSourceCode = ref(selectedSnapshot.sourceCode);
   const selectedChatModelName = ref(selectedSnapshot.modelName);
   const chatPreferencesStore = useChatPreferencesStore();
+  const toast = useToastStore();
 
   const state: ModelSourceStateRefs = {
     sources,
@@ -185,7 +187,11 @@ export const useModelSourceStore = defineStore('modelSource', () => {
       sourceCode: selectedChatSourceCode.value,
       modelName: selectedChatModelName.value,
     };
-    window.localStorage.setItem(CHAT_MODEL_STORAGE_KEY, JSON.stringify(payload));
+    try {
+      window.localStorage.setItem(CHAT_MODEL_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('[ModelSourceStore] Failed to persist to localStorage:', error);
+    }
   }
 
   function clearSelectedChatModel() {
@@ -250,19 +256,36 @@ export const useModelSourceStore = defineStore('modelSource', () => {
   }
 
   async function refreshSourceCatalog() {
-    await refreshModelSourceCatalog(state, formRefs);
-    reconcileSelectedChatModel();
+    try {
+      await refreshModelSourceCatalog(state, formRefs);
+      reconcileSelectedChatModel();
+    } catch (error) {
+      // 后端不可达时静默处理，错误信息已由 refreshModelSourceCatalog 设置到 errorMessage
+      console.error('[ModelSourceStore] Failed to refresh catalog:', error);
+    }
   }
 
   async function bootstrap() {
-    await refreshSourceCatalog();
-    await syncSelectedChatModelFromStorage();
+    try {
+      await refreshSourceCatalog();
+      await syncSelectedChatModelFromStorage();
+    } catch (error) {
+      // bootstrap 失败不应阻塞设置页加载
+      console.error('[ModelSourceStore] Bootstrap failed:', error);
+    }
   }
 
   async function saveCurrentForm() {
-    await saveModelSourceForm(state, formRefs);
-    reconcileSelectedChatModel();
-    successMessage.value = '供应商配置已保存';
+    try {
+      await saveModelSourceForm(state, formRefs);
+      reconcileSelectedChatModel();
+      successMessage.value = '供应商配置已保存';
+      toast.success('供应商配置已保存');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '保存供应商配置失败';
+      toast.error(message);
+      throw error;
+    }
   }
 
   async function testModelDraftAction(localId: string) {
@@ -290,9 +313,15 @@ export const useModelSourceStore = defineStore('modelSource', () => {
       form.value.models = uniqueModels.length > 0 ? uniqueModels.map((modelName) => createModelInput(modelName)) : [createModelInput()];
       testResultByModelId.value = {};
       successMessage.value = uniqueModels.length > 0 ? `已拉取 ${uniqueModels.length} 个模型` : '未拉取到可用模型';
+      if (uniqueModels.length > 0) {
+        toast.success(`已拉取 ${uniqueModels.length} 个模型`);
+      } else {
+        toast.warning('未拉取到可用模型');
+      }
       return uniqueModels;
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : '拉取模型列表失败';
+      toast.error(errorMessage.value);
       throw error;
     } finally {
       fetchingModels.value = false;
@@ -300,15 +329,29 @@ export const useModelSourceStore = defineStore('modelSource', () => {
   }
 
   async function removeSource(sourceCode: string) {
-    await removeModelSource(state, formRefs, sourceCode);
-    reconcileSelectedChatModel();
-    successMessage.value = '供应商配置已删除';
+    try {
+      await removeModelSource(state, formRefs, sourceCode);
+      reconcileSelectedChatModel();
+      successMessage.value = '供应商配置已删除';
+      toast.success('供应商配置已删除');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除供应商失败';
+      toast.error(message);
+      throw error;
+    }
   }
 
   async function removeModel(sourceCode: string, modelName: string) {
-    await removeModelFromSource(state, formRefs, sourceCode, modelName);
-    reconcileSelectedChatModel();
-    successMessage.value = '模型已删除';
+    try {
+      await removeModelFromSource(state, formRefs, sourceCode, modelName);
+      reconcileSelectedChatModel();
+      successMessage.value = '模型已删除';
+      toast.success('模型已删除');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除模型失败';
+      toast.error(message);
+      throw error;
+    }
   }
 
   function addModelRow() {

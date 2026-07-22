@@ -33,7 +33,7 @@ export type ChatDirectiveMarker = '@Continue@' | '@Finish@' | '@Missing@';
 
 // 消息块类型：按事件实际到达顺序排列
 // reasoning 和 content 交替出现，每个 reasoning 块独立控制展开
-export type ChatMessageBlockType = 'reasoning' | 'content' | 'tool';
+export type ChatMessageBlockType = 'reasoning' | 'content' | 'tool' | 'media-status';
 
 export interface ChatMessageBlock {
   id: string;
@@ -45,6 +45,8 @@ export interface ChatMessageBlock {
   text: string;
   // tool 块的附加信息
   toolStatus?: ToolStatusEvent;
+  // media-status 块的状态：waiting（等待模型处理）/ completed（模型已开始输出）
+  mediaStatus?: 'waiting' | 'completed';
 }
 
 // 1005 ERROR 事件的 eventData 结构

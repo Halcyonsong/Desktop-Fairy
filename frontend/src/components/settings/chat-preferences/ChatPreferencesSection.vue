@@ -40,6 +40,20 @@ const settingsSummary = computed(() => {
   }
   return tags;
 });
+
+// 数值校验：将 Temperature 夹紧到 [0, 2]，非数字时清空（恢复"默认"占位符）
+function clampTemperature(value: string): string {
+  const num = parseFloat(value);
+  if (isNaN(num)) return '';
+  return String(Math.min(2, Math.max(0, num)));
+}
+
+// 数值校验：将 MaxTokens 夹紧到 [1, 200000]，非数字时清空（恢复"默认"占位符）
+function clampMaxTokens(value: string): string {
+  const num = parseInt(value, 10);
+  if (isNaN(num)) return '';
+  return String(Math.min(200000, Math.max(1, num)));
+}
 </script>
 
 <template>
@@ -119,10 +133,13 @@ const settingsSummary = computed(() => {
             <span>{{ customText.chatPreferences.temperatureLabel }}</span>
             <input
               :value="chatPreferencesStore.temperatureInput"
-              type="text"
-              inputmode="decimal"
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
               :placeholder="customText.chatPreferences.defaultPlaceholder"
-              @input="chatPreferencesStore.setTemperatureInput(($event.target as HTMLInputElement).value)"
+              @input="chatPreferencesStore.setTemperatureInput(clampTemperature(($event.target as HTMLInputElement).value))"
+              @change="chatPreferencesStore.setTemperatureInput(clampTemperature(($event.target as HTMLInputElement).value))"
             />
           </label>
 
@@ -130,10 +147,13 @@ const settingsSummary = computed(() => {
             <span>{{ customText.chatPreferences.maxTokensLabel }}</span>
             <input
               :value="chatPreferencesStore.maxTokensInput"
-              type="text"
-              inputmode="numeric"
+              type="number"
+              min="1"
+              max="200000"
+              step="1"
               :placeholder="customText.chatPreferences.defaultPlaceholder"
-              @input="chatPreferencesStore.setMaxTokensInput(($event.target as HTMLInputElement).value)"
+              @input="chatPreferencesStore.setMaxTokensInput(clampMaxTokens(($event.target as HTMLInputElement).value))"
+              @change="chatPreferencesStore.setMaxTokensInput(clampMaxTokens(($event.target as HTMLInputElement).value))"
             />
           </label>
         </div>

@@ -612,6 +612,12 @@
   border-left: 2px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
   background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
   border-radius: 0 8px 8px 0;
+  transition: background 0.2s ease;
+}
+
+.message-block--tool-result {
+  border-left-color: color-mix(in srgb, var(--color-success, #22c55e) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success, #22c55e) 3%, var(--color-surface));
 }
 
 .message-block__tool {
@@ -644,6 +650,11 @@
   gap: 0;
 }
 
+.tool-panel__icon {
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
 .tool-panel__header {
   display: flex;
   align-items: center;
@@ -658,16 +669,29 @@
   line-height: 1.5;
   text-align: left;
   width: 100%;
+  transition: color 0.15s ease;
 }
 
 .tool-panel__header:hover {
   color: var(--color-text);
 }
 
+.tool-panel__spinner {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.tool-panel__chevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform 0.2s ease;
+}
+
 .tool-panel__title {
   flex: 1;
   color: var(--color-accent);
   font-weight: 600;
+  font-size: 13px;
 }
 
 .tool-panel__args {
@@ -683,6 +707,31 @@
   white-space: pre-wrap;
   word-break: break-all;
   overflow-x: auto;
+}
+
+/* TOOL_RESULT 结果状态 */
+.tool-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tool-result__icon {
+  flex-shrink: 0;
+  color: var(--color-success, #22c55e);
+}
+
+.tool-result__label {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.tool-result__name {
+  color: var(--color-text);
+  font-weight: 500;
 }
 
 /* 异常终止 stage 警告样式 */
@@ -1161,6 +1210,123 @@
   border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }
 
+/* 工具调用锁定态（有附件时）：不可关闭，显示锁定效果 */
+.composer-tool-button--locked {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.composer-tool-button--locked::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* 附件选项 popover */
+.attachment-entry-wrapper {
+  position: relative;
+}
+
+.attachment-menu-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 100;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.attachment-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.attachment-menu-item:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-accent);
+}
+
+.attachment-menu-item svg {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.attachment-menu-item:hover svg {
+  color: var(--color-accent);
+}
+
+.attachment-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--color-border);
+}
+
+/* popover 动画 */
+.attachment-menu-enter-active {
+  transition: all 0.2s ease;
+}
+
+.attachment-menu-leave-active {
+  transition: all 0.15s ease;
+}
+
+.attachment-menu-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.attachment-menu-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* 拖拽覆盖层 */
+.chat-composer {
+  position: relative;
+}
+
+.chat-composer--dragging {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -4px;
+}
+
+.chat-composer__drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-primary));
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 500;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
 /* 语音输入按钮：监听中红色背景 + 白色图标 + 缩放脉冲动画 */
 .composer-voice-button--active {
   background: var(--color-danger);
@@ -1178,6 +1344,47 @@
 }
 
 /* ===== 消息错误提示条 ===== */
+/* media-status 块：图片处理状态提示（inline，在出现位置展示） */
+.message-block--media-status {
+  margin: 6px 0;
+}
+
+.media-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.media-status-item--waiting {
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-text-muted);
+}
+
+.media-status-item--waiting .media-status-item__icon {
+  color: var(--color-accent);
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+.media-status-item--completed {
+  background: color-mix(in srgb, var(--color-success, #22c55e) 6%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent);
+  color: var(--color-text-muted);
+}
+
+.media-status-item--completed .media-status-item__icon {
+  color: var(--color-success, #22c55e);
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .message-error-banner {
   display: flex;
   align-items: flex-start;

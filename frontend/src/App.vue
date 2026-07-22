@@ -1,17 +1,24 @@
 ﻿<script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { LoaderCircle } from '@lucide/vue';
 import FloatingFairy from '@/components/fairy/FloatingFairy.vue';
+import MinimizeDialog from '@/components/common/MinimizeDialog.vue';
+import ToastContainer from '@/components/common/ToastContainer.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 import { useBackendStatusStore } from '@/stores/backendStatusStore';
+import { useMinimizePreferencesStore } from '@/stores/minimizePreferencesStore';
 import { useWindowModeStore } from '@/stores/windowModeStore';
 import { uiText } from '@/config/uiText';
 
 const windowModeStore = useWindowModeStore();
 const backendStatusStore = useBackendStatusStore();
+const minimizePrefs = useMinimizePreferencesStore();
 const windowMode = computed(() => windowModeStore.windowMode);
 const isFairyWindow = computed(() => windowMode.value === 'fairy');
 const backendReady = computed(() => backendStatusStore.ready);
+
+// 最小化弹窗状态
+const minimizeDialogOpen = ref(false);
 
 watch(
   windowMode,
@@ -21,6 +28,16 @@ watch(
   },
   { immediate: true },
 );
+
+onMounted(() => {
+  // 加载最小化偏好
+  void minimizePrefs.load();
+
+  // 监听主进程的最小化询问事件
+  window.desktopFairy?.onAskMinimize?.(() => {
+    minimizeDialogOpen.value = true;
+  });
+});
 </script>
 
 <template>
@@ -36,6 +53,12 @@ watch(
     <FloatingFairy v-if="isFairyWindow" :window-mode="windowMode" />
     <WorkbenchView v-else />
   </template>
+
+  <!-- 最小化行为选择弹窗（仅工作台窗口） -->
+  <MinimizeDialog v-if="!isFairyWindow" :open="minimizeDialogOpen" @close="minimizeDialogOpen = false" />
+
+  <!-- 全局 Toast 通知 -->
+  <ToastContainer />
 </template>
 
 <style scoped>

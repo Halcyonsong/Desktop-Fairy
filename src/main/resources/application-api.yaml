@@ -2,10 +2,11 @@ spring:
   ai:
     model:
       chat: openai
-
+#仅做占位，防止启动报错
     openai:
-      base-url: http://127.0.0.1:18080
-      api-key: local
+      base-url: ${OPENAI_BASE_URL:https://your-openai-compatible-base-url}
+      api-key: ${OPENAI_API_KEY:replace-with-your-api-key}
       chat:
         options:
-          model: deepseek-v4-pro
+          model: ${OPENAI_CHAT_MODEL:replace-with-your-chat-model}
+

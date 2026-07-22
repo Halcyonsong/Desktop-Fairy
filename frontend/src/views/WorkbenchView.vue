@@ -10,8 +10,11 @@ import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useBackendStatusStore } from '@/stores/backendStatusStore';
 import { useFairyChatStore } from '@/stores/fairyChatStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
+import { useSessionFileStore } from '@/stores/sessionFileStore';
+import { useToastStore } from '@/stores/toastStore';
 import { useUiStore } from '@/stores/uiStore';
 import { useWorkbenchStore } from '@/stores/workbenchStore';
+import { customText } from '@/config/customText';
 import type { ChatSession } from '@/types/chat';
 
 const workbench = useWorkbenchStore();
@@ -19,6 +22,8 @@ const uiStore = useUiStore();
 const modelSourceStore = useModelSourceStore();
 const fairyChatStore = useFairyChatStore();
 const chatPreferencesStore = useChatPreferencesStore();
+const sessionFileStore = useSessionFileStore();
+const toast = useToastStore();
 
 const sessionSidebarRef = ref<InstanceType<typeof SessionSidebar> | null>(null);
 
@@ -102,11 +107,23 @@ async function handleSidebarSelect(sessionId: string) {
 
   if (fairyChatStore.isTemporaryChatSession(sessionId)) {
     fairyChatStore.selectTemporaryChat();
+    sessionFileStore.reset();
     return;
   }
 
   fairyChatStore.deselectTemporaryChat();
   await workbench.loadSession(sessionId);
+  // 加载该会话的已授权文件列表
+  await sessionFileStore.loadForSession(sessionId);
+}
+
+function handleToggleToolCall() {
+  // 如果工具调用被锁定（有附件），不允许关闭
+  if (chatPreferencesStore.toolCallLocked) {
+    toast.warning(customText.composer.attachmentToolLocked);
+    return;
+  }
+  chatPreferencesStore.toggleToolCallEnabled();
 }
 
 function handleRefreshTemporarySession() {
@@ -132,6 +149,8 @@ async function handleComposerSend(question: string) {
 
   try {
     await workbench.sendMessage(question);
+    // 发送成功后清除附件展示（后端授权仍保留，仅清空 UI）
+    sessionFileStore.clear();
   } catch (error) {
     console.error('[WorkbenchView] 工作台消息发送失败:', error);
   }
@@ -156,20 +175,47 @@ function handleRefreshHistory() {
     .then(() => {
       if (!workbench.errorMessage) {
         refreshHistorySuccess.value = true;
+        toast.success('历史已刷新');
         setTimeout(() => {
           refreshHistorySuccess.value = false;
         }, 1200);
+      } else {
+        toast.error(workbench.errorMessage);
       }
     })
     .catch(() => {
       refreshHistorySuccess.value = false;
+      toast.error('刷新历史失败');
     });
 }
 
 function handleCreateSession() {
   fairyChatStore.deselectTemporaryChat();
   uiStore.switchView('chat');
-  void workbench.createSession();
+  void workbench.createSession().catch((error) => {
+    console.error('[WorkbenchView] 创建会话失败:', error);
+    toast.error('创建会话失败');
+  });
+}
+
+async function handleDeleteSession(sessionId: string) {
+  try {
+    await workbench.deleteSession(sessionId);
+    toast.success('会话已删除');
+  } catch (error) {
+    console.error('[WorkbenchView] 删除会话失败:', error);
+    toast.error('删除会话失败');
+  }
+}
+
+async function handleRenameSession(sessionId: string, title: string) {
+  try {
+    await workbench.renameSession(sessionId, title);
+    toast.success('已重命名');
+  } catch (error) {
+    console.error('[WorkbenchView] 重命名会话失败:', error);
+    toast.error('重命名失败');
+  }
 }
 
 onMounted(() => {
@@ -216,8 +262,8 @@ onMounted(() => {
               :view-mode="uiStore.viewMode"
               @create="handleCreateSession"
               @select="handleSidebarSelect"
-              @rename="workbench.renameSession"
-              @delete="workbench.deleteSession"
+              @rename="handleRenameSession"
+              @delete="handleDeleteSession"
               @batch-delete="handleBatchDelete"
               @refresh-temporary-session="handleRefreshTemporarySession"
               @switch-view="uiStore.switchView"
@@ -257,6 +303,9 @@ onMounted(() => {
               :auto-focus="shouldAutoFocusComposer"
               :allow-empty-send="fairyChatStore.selected"
               :tool-call-enabled="chatPreferencesStore.toolCallEnabled"
+              :tool-call-locked="chatPreferencesStore.toolCallLocked"
+              :session-id="fairyChatStore.selected ? undefined : activeSessionId"
+              :is-temporary-session="fairyChatStore.selected"
               :system-prompts="chatPreferencesStore.systemPrompts"
               :selected-prompt-slot="chatPreferencesStore.selectedPromptSlot"
               @update:draft="fairyChatStore.selected ? fairyChatStore.setDraft($event) : workbench.setComposerDraft($event)"
@@ -268,7 +317,7 @@ onMounted(() => {
               @update:max-tokens-input="modelSourceStore.setMaxTokensInput"
               @update:selected-prompt-slot="chatPreferencesStore.setSelectedPromptSlot($event)"
               @update-system-prompt="(id, patch) => chatPreferencesStore.updateSystemPrompt(id, patch)"
-              @toggle-tool-call="chatPreferencesStore.toggleToolCallEnabled()"
+              @toggle-tool-call="handleToggleToolCall"
             />
           </template>
         </AppShell>

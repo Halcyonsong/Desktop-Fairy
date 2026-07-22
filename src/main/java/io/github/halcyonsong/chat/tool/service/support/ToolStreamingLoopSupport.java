@@ -7,8 +7,11 @@ import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamState;
 import io.github.halcyonsong.chat.tool.constants.ToolChatDirectiveConstants;
 import io.github.halcyonsong.chat.tool.enums.ToolChatStageEnum;
 import io.github.halcyonsong.chat.tool.enums.ToolRoundDirectiveEnum;
+import io.github.halcyonsong.chat.tool.pojo.PendingMediaAttachment;
 import io.github.halcyonsong.chat.tool.pojo.vo.ToolStatusEventVO;
-import io.github.halcyonsong.chat.tool.tool.ToolFunctionRegistry;
+import io.github.halcyonsong.chat.tool.service.support.status.ToolLoopRuntimeState;
+import io.github.halcyonsong.chat.tool.service.support.status.ToolRoundState;
+import io.github.halcyonsong.chat.tool.tool.ToolFunctionFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -16,8 +19,11 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
@@ -30,7 +36,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ToolStreamingLoopSupport {
 
-    private final ToolFunctionRegistry toolFunctionRegistry;
+    private final ToolFunctionFactory toolFunctionFactory;
     private final ChatStreamEventSupport chatStreamEventSupport;
     private final ToolChatPromptSupport toolChatPromptSupport;
 
@@ -63,15 +69,33 @@ public class ToolStreamingLoopSupport {
         );
         String roundSystemPrompt = toolChatPromptSupport.buildRoundSystemPrompt(systemPrompt, runtimeState);
         // 构建本轮正式调用方法
-        Flux<ChatEventVO> roundFlux = chatClient.prompt()
+        ChatClient.ChatClientRequestSpec requestSpec = chatClient.prompt()
                 .system(roundSystemPrompt)
                 .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, sessionId))
-                .user(roundUserPrompt)
-                .tools(toolFunctionRegistry.getToolFunctions())
-                .stream()
-                .chatResponse()
-                .concatMap(chatResponse -> handleRoundChunk(chatResponse, streamState, roundState, runtimeState));
+                .tools(toolFunctionFactory.createToolFunctions(sessionId, runtimeState));
+        // 进行最终构造
+        Flux<ChatEventVO> roundFlux;
 
+        if (runtimeState.hasPendingMediaAttachments()) {
+            roundFlux = Flux.defer(() -> {
+                        applyRoundUserInput(requestSpec, roundUserPrompt, runtimeState);
+
+                        return Flux.just(buildNullToolStatusEvent(
+                                round,
+                                ToolChatStageEnum.MEDIA_REQUEST_START.getCode(),
+                                ToolChatStageEnum.MEDIA_REQUEST_START.getDesc()
+                        ));
+                    })
+                    .concatWith(Flux.defer(() -> requestSpec.stream()
+                            .chatResponse()
+                            .concatMap(chatResponse -> handleRoundChunk(chatResponse, streamState, roundState, runtimeState))));
+        } else {
+            applyRoundUserInput(requestSpec, roundUserPrompt, runtimeState);
+
+            roundFlux = requestSpec.stream()
+                    .chatResponse()
+                    .concatMap(chatResponse -> handleRoundChunk(chatResponse, streamState, roundState, runtimeState));
+        }
         return  buildLoopHeaderFlux(streamState, round)
                 .concatWith(startFlux)
                 .concatWith(roundFlux)
@@ -84,6 +108,36 @@ public class ToolStreamingLoopSupport {
                         runtimeState,
                         roundState
                 )));
+    }
+
+    // 构造最终用户提示词输入
+    private void applyRoundUserInput(ChatClient.ChatClientRequestSpec requestSpec,
+                                     String roundUserPrompt,
+                                     ToolLoopRuntimeState runtimeState) {
+        if (!runtimeState.hasPendingMediaAttachments()) {
+            requestSpec.user(roundUserPrompt);
+            return;
+        }
+
+        List<PendingMediaAttachment> attachments = runtimeState.consumePendingMediaAttachments();
+
+        requestSpec.user(userSpec -> {
+            userSpec.text(roundUserPrompt);
+
+            for (PendingMediaAttachment attachment : attachments) {
+                MimeType mimeType = resolveMimeType(attachment.getContentType());
+                FileSystemResource resource = new FileSystemResource(attachment.getPath());
+                userSpec.media(mimeType, resource);
+            }
+        });
+    }
+
+    // 解析媒体类型
+    private MimeType resolveMimeType(String contentType) {
+        if (StringUtils.hasText(contentType)) {
+            return MimeType.valueOf(contentType.trim());
+        }
+        return MimeTypeUtils.APPLICATION_OCTET_STREAM;
     }
 
     // 判断并添加调用头
@@ -126,6 +180,14 @@ public class ToolStreamingLoopSupport {
                 .map(ChatResponse::getResult)
                 .map(Generation::getOutput)
                 .orElse(null);
+        if (assistantMessage == null) {
+            log.info("tool chunk: assistantMessage is null");
+        } else {
+            log.info("tool chunk: hasToolCalls={}, text={}, metadata={}",
+                    assistantMessage.hasToolCalls(),
+                    assistantMessage.getText(),
+                    assistantMessage.getMetadata());
+        }
         // 构建前缀事件容器
         List<ChatEventVO> prefixEvents = new ArrayList<>();
         // 有工具调用事件的特殊处理
@@ -135,12 +197,19 @@ public class ToolStreamingLoopSupport {
             List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
             if (!CollectionUtils.isEmpty(toolCalls)) {
                 for (AssistantMessage.ToolCall toolCall : toolCalls) {
-                    boolean firstSeen = runtimeState.registerToolCall(toolCall.id());
+                    String toolCallKey = runtimeState.resolveToolCallKey(roundState.getRound(), toolCall);
+                    boolean firstSeen = runtimeState.registerToolCall(toolCallKey);
                     if (!firstSeen) {
                         continue;
                     }
                     String toolSummary = summarizeToolCall(toolCall);
                     roundState.addToolSummary(toolSummary);
+
+                    log.info("tool call detected, round={}, id={}, name={}, arguments={}",
+                            roundState.getRound(),
+                            toolCall.id(),
+                            toolCall.name(),
+                            toolCall.arguments());
 
                     prefixEvents.add(buildToolStatusEvent(
                             roundState.getRound(),

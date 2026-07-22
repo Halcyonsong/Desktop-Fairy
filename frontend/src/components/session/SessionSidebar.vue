@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { CheckSquare, CircleHelp, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Search, Settings, Sparkles, Square, Trash2, X } from '@lucide/vue';
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import SessionHelpDialog from '@/components/session/SessionHelpDialog.vue';
 import { appConfig } from '@/config/appConfig';
 import { customText } from '@/config/customText';
 import { uiText } from '@/config/uiText';
+import { useToastStore } from '@/stores/toastStore';
 import { formatDateTime } from '@/utils/date';
 import type { ChatSession } from '@/types/chat';
 import type { ViewMode } from '@/types/pet';
@@ -30,6 +31,8 @@ const emit = defineEmits<{
   switchView: [viewMode: ViewMode];
   batchDelete: [sessionIds: string[]];
 }>();
+
+const toast = useToastStore();
 
 const keyword = ref('');
 const openMenuSessionId = ref('');
@@ -194,6 +197,56 @@ function cancelBatchDelete() {
   batchDeleteModalOpen.value = false;
 }
 
+// ===== ESC 键关闭弹窗支持 =====
+function handleEscRename(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    cancelRename();
+  }
+}
+
+function handleEscDelete(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    cancelDelete();
+  }
+}
+
+function handleEscBatchDelete(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    // cancelBatchDelete 内部已对 batchDeleting 进行拦截
+    cancelBatchDelete();
+  }
+}
+
+watch(renameModalOpen, (open) => {
+  if (open) {
+    window.addEventListener('keydown', handleEscRename);
+  } else {
+    window.removeEventListener('keydown', handleEscRename);
+  }
+});
+
+watch(deleteModalOpen, (open) => {
+  if (open) {
+    window.addEventListener('keydown', handleEscDelete);
+  } else {
+    window.removeEventListener('keydown', handleEscDelete);
+  }
+});
+
+watch(batchDeleteModalOpen, (open) => {
+  if (open) {
+    window.addEventListener('keydown', handleEscBatchDelete);
+  } else {
+    window.removeEventListener('keydown', handleEscBatchDelete);
+  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleEscRename);
+  window.removeEventListener('keydown', handleEscDelete);
+  window.removeEventListener('keydown', handleEscBatchDelete);
+});
+
 async function confirmBatchDelete() {
   const ids = [...selectedIds.value];
   if (ids.length === 0) {
@@ -221,6 +274,13 @@ function onBatchDeleteDone(successCount: number, failCount: number) {
   batchDeleteHasError.value = failCount > 0;
   batchDeleting.value = false;
   selectedIds.value = new Set();
+
+  // 额外的 toast 反馈，补充内联提示
+  if (failCount > 0) {
+    toast.error(`部分会话删除失败，失败 ${failCount} 个`);
+  } else if (successCount > 0) {
+    toast.success(`已删除 ${successCount} 个会话`);
+  }
 
   if (!batchDeleteHasError.value) {
     setTimeout(() => {

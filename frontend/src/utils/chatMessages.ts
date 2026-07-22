@@ -5,6 +5,27 @@ import type {
   ModelStreamErrorEvent,
   ToolStatusEvent,
 } from '@/types/chat';
+import { TOOL_STAGE } from '@/config/chatConstants';
+
+// 将 toolStatuses 转换为 blocks（区分 media-status 和 tool）
+function toolStatusToBlock(message: ChatMessage, entry: ToolStatusEvent, index: number): ChatMessageBlock {
+  if (entry.stage === TOOL_STAGE.mediaRequestStart) {
+    return {
+      id: `block-${message.id}-media-${entry.round}-${index}`,
+      type: 'media-status',
+      round: entry.round,
+      text: entry.message,
+      mediaStatus: 'completed', // 历史消息中的 media-status 一定是已完成的
+    };
+  }
+  return {
+    id: `block-${message.id}-tool-${entry.round}-${index}`,
+    type: 'tool',
+    round: entry.round,
+    text: entry.message,
+    toolStatus: entry,
+  };
+}
 
 const MARKER_REGEX = /(?:\n|^)[ \t]*(@Continue@|@Finish@|@Missing@)[ \t]*$/;
 
@@ -158,13 +179,7 @@ export function rebuildMessageBlocks(message: ChatMessage): ChatMessageBlock[] {
     // 绑定 toolStatuses
     if (message.toolStatuses?.length) {
       for (const entry of message.toolStatuses) {
-        message.blocks.push({
-          id: `block-${message.id}-tool-${entry.round}-${message.blocks.length}`,
-          type: 'tool',
-          round: entry.round,
-          text: entry.message,
-          toolStatus: entry,
-        });
+        message.blocks.push(toolStatusToBlock(message, entry, message.blocks.length));
       }
     }
     return message.blocks;
@@ -194,17 +209,7 @@ export function rebuildMessageBlocks(message: ChatMessage): ChatMessageBlock[] {
   // 插入 toolStatuses 到对应轮次（按 round 匹配，放在该轮 content 之后）
   if (message.toolStatuses?.length) {
     for (const entry of message.toolStatuses) {
-      const insertIndex = blocks.findIndex(
-        (b, i) => b.round === entry.round && i === blocks.length - 1,
-      );
-      // 简化：直接追加到末尾，按 round 标注
-      blocks.push({
-        id: `block-${message.id}-tool-${entry.round}-${blocks.length}`,
-        type: 'tool',
-        round: entry.round,
-        text: entry.message,
-        toolStatus: entry,
-      });
+      blocks.push(toolStatusToBlock(message, entry, blocks.length));
     }
   }
 

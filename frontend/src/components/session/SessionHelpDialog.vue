@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { helpDialogText, type HelpSectionKey } from '@/config/helpText';
 
 const props = defineProps<{
@@ -22,6 +22,28 @@ watch(
     }
   },
 );
+
+// ===== ESC 键关闭支持 =====
+function handleEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    emit('close');
+  }
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      window.addEventListener('keydown', handleEsc);
+    } else {
+      window.removeEventListener('keydown', handleEsc);
+    }
+  },
+);
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleEsc);
+});
 </script>
 
 <template>

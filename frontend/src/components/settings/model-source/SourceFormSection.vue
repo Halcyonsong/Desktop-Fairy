@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ChevronDown, Copy, Eye, EyeOff, Save, X } from '@lucide/vue';
 import { useSourceFormController } from '@/components/settings/model-source/controllers/useSourceFormController';
 import { customText } from '@/config/customText';
@@ -11,6 +12,16 @@ const props = defineProps<{
   canSubmit: boolean;
   saving: boolean;
 }>();
+
+// 保存按钮禁用原因（与父组件 canSubmit 校验逻辑保持一致）
+const disabledReason = computed(() => {
+  if (!props.form.name.trim()) return '请填写名称';
+  if (!props.form.baseUrl.trim()) return '请填写 Base URL';
+  if (!props.form.apiKey.trim()) return '请填写 API Key';
+  if (!props.form.provider.trim()) return '请填写 Provider';
+  if (!props.form.models.some((item) => item.modelName.trim())) return '请至少添加一个模型';
+  return '';
+});
 
 const {
   apiKeyVisible,
@@ -143,10 +154,21 @@ const emit = defineEmits<{
     </div>
 
     <div class="settings-panel__actions settings-panel__actions--block settings-panel__actions--end">
-      <button class="settings-page__primary settings-page__primary--icon" type="button" :disabled="!canSubmit || saving" :title="customText.modelSource.saveTitle" @click="emit('save')">
+      <button class="settings-page__primary settings-page__primary--icon" type="button" :disabled="!canSubmit || saving" :title="disabledReason || customText.modelSource.saveTitle" @click="emit('save')">
         <Save :size="16" />
         <span>{{ saving ? customText.modelSource.savingTitle : customText.modelSource.saveTitle }}</span>
       </button>
     </div>
+    <p v-if="disabledReason" class="source-form__disabled-hint">{{ disabledReason }}</p>
   </section>
 </template>
+
+<style scoped>
+.source-form__disabled-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted, var(--color-text));
+  text-align: right;
+}
+</style>

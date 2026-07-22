@@ -28,6 +28,7 @@ export const uiText = {
       TOOL_LIMIT: '达到工具调用上限',
       TIME_LIMIT: '达到执行时长上限',
       TOOL_RESULT: '工具结果',
+      MEDIA_REQUEST_START: '正在获取图片并等待模型处理',
     },
   },
   session: {

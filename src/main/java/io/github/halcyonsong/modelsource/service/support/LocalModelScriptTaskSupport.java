@@ -1,6 +1,6 @@
 package io.github.halcyonsong.modelsource.service.support;
 
-import io.github.halcyonsong.common.config.filepath.DesktopFairyPathProperties;
+import io.github.halcyonsong.common.config.filepath.FilePathProperties;
 import io.github.halcyonsong.common.enums.ResultCodeEnum;
 import io.github.halcyonsong.common.exception.BusinessException;
 import io.github.halcyonsong.modelsource.constants.ModelBatConastants;
@@ -36,7 +36,7 @@ public class LocalModelScriptTaskSupport {
 
     private static final long PROCESS_TIMEOUT_SECONDS = 2400L;
 
-    private final DesktopFairyPathProperties desktopFairyPathProperties;
+    private final FilePathProperties filePathProperties;
     private final ModelSourceService modelSourceService;
 
     private final Map<String, LocalModelScriptTaskHolder> taskStore = new ConcurrentHashMap<>();
@@ -127,7 +127,7 @@ public class LocalModelScriptTaskSupport {
     }
 
     private Path resolveScriptPath(String scriptName) {
-        Path scriptPath = Paths.get(desktopFairyPathProperties.getLocalModelScriptDir(), scriptName)
+        Path scriptPath = Paths.get(filePathProperties.getLocalModelScriptDir(), scriptName)
                 .toAbsolutePath()
                 .normalize();
         if (!Files.exists(scriptPath) || !Files.isRegularFile(scriptPath)) {

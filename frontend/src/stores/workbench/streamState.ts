@@ -26,6 +26,21 @@ function setCurrentRound(message: ChatMessage, round: number) {
   meta._currentRound = round;
 }
 
+// 将所有 waiting 状态的 media-status block 标记为 completed
+function markMediaStatusCompleted(message: ChatMessage) {
+  const blocks = message.blocks ?? [];
+  let changed = false;
+  for (const b of blocks) {
+    if (b.type === 'media-status' && b.mediaStatus === 'waiting') {
+      b.mediaStatus = 'completed';
+      changed = true;
+    }
+  }
+  if (changed) {
+    message.blocks = [...blocks];
+  }
+}
+
 function appendBlock(message: ChatMessage, block: Omit<ChatMessageBlock, 'id'>) {
   const id = `block-${message.id}-${(message.blocks?.length ?? 0)}-${Date.now()}`;
   message.blocks = [...(message.blocks ?? []), { ...block, id }];
@@ -70,6 +85,9 @@ export function handleStreamEvent(
     const timing = ensureTiming(assistantMessage);
     timing.firstReasoningAt ??= Date.now();
 
+    // 模型开始输出思考，标记之前的 media-status block 为 completed
+    markMediaStatusCompleted(assistantMessage);
+
     const round = currentRound(assistantMessage);
     const existing = lastBlock(assistantMessage, 'reasoning');
     if (existing) {
@@ -92,6 +110,31 @@ export function handleStreamEvent(
     // 这样即使 @Continue@ 标记出现问题，轮次也能正确推进
     if (entry.stage === TOOL_STAGE.roundStart) {
       setCurrentRound(assistantMessage, entry.round);
+    }
+
+    // MEDIA_REQUEST_START 插入为 inline block，在出现位置展示
+    // 当后续 REASONING/DATA 到达时标记为 completed
+    if (entry.stage === TOOL_STAGE.mediaRequestStart) {
+      // 标记之前未完成的 media-status block 为 completed
+      const blocks = assistantMessage.blocks ?? [];
+      for (const b of blocks) {
+        if (b.type === 'media-status' && b.mediaStatus === 'waiting') {
+          b.mediaStatus = 'completed';
+        }
+      }
+      // 插入新的 media-status block
+      appendBlock(assistantMessage, {
+        type: 'media-status',
+        round: entry.round,
+        text: entry.message,
+        mediaStatus: 'waiting',
+      });
+
+      if (!assistantMessage.toolStatuses) {
+        assistantMessage.toolStatuses = [];
+      }
+      assistantMessage.toolStatuses.push(entry);
+      return;
     }
 
     appendBlock(assistantMessage, {
@@ -130,6 +173,10 @@ export function handleStreamEvent(
   if (event.eventType === CHAT_EVENT.data) {
     const timing = ensureTiming(assistantMessage);
     timing.firstOutputAt ??= Date.now();
+
+    // 模型开始输出正文，标记之前的 media-status block 为 completed
+    markMediaStatusCompleted(assistantMessage);
+
     assistantMessage.content += text;
     assistantMessage.status = 'streaming';
     setReasoningMessageId(sessionId, assistantMessage.id);
@@ -158,9 +205,12 @@ export function handleStreamEvent(
   if (event.eventType === CHAT_EVENT.stop) {
     const timing = ensureTiming(assistantMessage);
     timing.completedAt ??= Date.now();
+    // 停止时标记所有未完成的 media-status 为已完成
+    markMediaStatusCompleted(assistantMessage);
     assistantMessage.status = 'completed';
+    // 只清理空的 content/reasoning 块，保留 tool 和 media-status 块
     assistantMessage.blocks = (assistantMessage.blocks ?? []).filter(
-      (b) => b.text.trim() !== '',
+      (b) => b.type === 'tool' || b.type === 'media-status' || b.text.trim() !== '',
     );
     return;
   }
@@ -168,9 +218,12 @@ export function handleStreamEvent(
   if (event.eventType === CHAT_EVENT.interrupted) {
     const timing = ensureTiming(assistantMessage);
     timing.completedAt ??= Date.now();
+    // 中断时标记所有未完成的 media-status 为已完成
+    markMediaStatusCompleted(assistantMessage);
     assistantMessage.status = 'interrupted';
+    // 只清理空的 content/reasoning 块，保留 tool 和 media-status 块
     assistantMessage.blocks = (assistantMessage.blocks ?? []).filter(
-      (b) => b.text.trim() !== '',
+      (b) => b.type === 'tool' || b.type === 'media-status' || b.text.trim() !== '',
     );
     return;
   }
@@ -178,6 +231,8 @@ export function handleStreamEvent(
   if (event.eventType === CHAT_EVENT.error) {
     const timing = ensureTiming(assistantMessage);
     timing.completedAt ??= Date.now();
+    // 错误时标记所有未完成的 media-status 为已完成
+    markMediaStatusCompleted(assistantMessage);
     assistantMessage.status = 'error';
 
     // 解析 1005 错误事件的结构化数据

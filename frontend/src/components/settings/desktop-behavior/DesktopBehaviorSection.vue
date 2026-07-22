@@ -1,10 +1,31 @@
 <script setup lang="ts">
-import { RotateCcw, Timer } from '@lucide/vue';
+import { onMounted } from 'vue';
+import { Inbox, PanelBottom, RotateCcw, Timer } from '@lucide/vue';
 import { fairyConfig } from '@/config/fairyConfig';
 import { customText } from '@/config/customText';
 import { useFairyStore } from '@/stores/fairyStore';
+import { useMinimizePreferencesStore } from '@/stores/minimizePreferencesStore';
+import type { MinimizeBehavior } from '@/main';
 
 const fairyStore = useFairyStore();
+const minimizePrefs = useMinimizePreferencesStore();
+
+onMounted(() => {
+  void minimizePrefs.load();
+});
+
+function selectMinimizeBehavior(behavior: MinimizeBehavior | 'ask') {
+  if (behavior === 'ask') {
+    void minimizePrefs.setPrefs({ behavior: minimizePrefs.behavior, askAgain: true });
+  } else {
+    void minimizePrefs.setPrefs({ behavior, askAgain: false });
+  }
+}
+
+// 当前选中的模式（含"每次询问"）
+function currentMode(): MinimizeBehavior | 'ask' {
+  return minimizePrefs.askAgain ? 'ask' : minimizePrefs.behavior;
+}
 </script>
 
 <template>
@@ -173,6 +194,55 @@ const fairyStore = useFairyStore();
           </div>
         </div>
       </div>
+
+      <!-- 最小化行为 -->
+      <div class="settings-card settings-card--compact">
+        <div class="settings-card__header">
+          <div>
+            <h2>{{ customText.desktopBehavior.minimizeBehaviorTitle }}</h2>
+            <p>{{ customText.desktopBehavior.minimizeBehaviorDescription }}</p>
+          </div>
+        </div>
+
+        <div class="settings-section-stack settings-section-stack--compact">
+          <div class="settings-inline-panel settings-inline-panel--soft">
+            <div class="minimize-behavior-options">
+              <button
+                class="minimize-behavior-option"
+                :class="{ 'minimize-behavior-option--active': currentMode() === 'taskbar' }"
+                type="button"
+                :title="customText.desktopBehavior.minimizeBehaviorToggleTitle"
+                @click="selectMinimizeBehavior('taskbar')"
+              >
+                <PanelBottom :size="18" />
+                <span>{{ customText.desktopBehavior.minimizeOptionTaskbar }}</span>
+              </button>
+
+              <button
+                class="minimize-behavior-option"
+                :class="{ 'minimize-behavior-option--active': currentMode() === 'tray' }"
+                type="button"
+                :title="customText.desktopBehavior.minimizeBehaviorToggleTitle"
+                @click="selectMinimizeBehavior('tray')"
+              >
+                <Inbox :size="18" />
+                <span>{{ customText.desktopBehavior.minimizeOptionTray }}</span>
+              </button>
+
+              <button
+                class="minimize-behavior-option"
+                :class="{ 'minimize-behavior-option--active': currentMode() === 'ask' }"
+                type="button"
+                :title="customText.desktopBehavior.minimizeBehaviorToggleTitle"
+                @click="selectMinimizeBehavior('ask')"
+              >
+                <Timer :size="18" />
+                <span>{{ customText.desktopBehavior.minimizeOptionAsk }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -234,5 +304,38 @@ const fairyStore = useFairyStore();
   .desktop-behavior-idle-trigger {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== 最小化行为选项 ===== */
+.minimize-behavior-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.minimize-behavior-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.minimize-behavior-option:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.minimize-behavior-option--active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  color: var(--color-accent);
 }
 </style>

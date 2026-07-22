@@ -325,8 +325,6 @@ onBeforeUnmount(() => {
       <SavedModelsSection
         v-if="modelSourceStore.activeSourceDetail"
         :source-detail="modelSourceStore.activeSourceDetail"
-        @remove-source="modelSourceStore.removeSource"
-        @remove-model="modelSourceStore.removeModel"
       />
     </template>
   </div>

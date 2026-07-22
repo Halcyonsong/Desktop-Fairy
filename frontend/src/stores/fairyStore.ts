@@ -156,7 +156,11 @@ export const useFairyStore = defineStore('fairy', () => {
       idleTriggerMs: idleTriggerMs.value,
     };
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('[FairyStore] Failed to persist to localStorage:', error);
+    }
   }
 
   function syncNativeWindowState() {

@@ -19,6 +19,7 @@ export const TOOL_STAGE = {
   toolLimit: 'TOOL_LIMIT',
   timeLimit: 'TIME_LIMIT',
   toolResult: 'TOOL_RESULT',
+  mediaRequestStart: 'MEDIA_REQUEST_START',
 } as const;
 
 // 1005 ERROR 事件的 errorType 取值

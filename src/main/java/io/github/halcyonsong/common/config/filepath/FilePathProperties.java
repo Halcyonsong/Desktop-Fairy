@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component;
 @Data
 @Component
 @ConfigurationProperties(prefix = "desktop-fairy.paths")
-public class DesktopFairyPathProperties {
+public class FilePathProperties {
 
     private String localModelScriptDir;
+
 }

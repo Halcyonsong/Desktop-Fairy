@@ -13,6 +13,7 @@ spring:
 
 
 server:
+  address: 127.0.0.1
   port: 18765
   servlet:
     context-path: /api
@@ -20,3 +21,6 @@ server:
       charset: UTF-8
       enabled: true
       force: true
+  error:
+    include-stacktrace: NEVER
+    include-exception: false
