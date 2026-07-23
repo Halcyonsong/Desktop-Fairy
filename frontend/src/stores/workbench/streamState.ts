@@ -1,10 +1,11 @@
 import { CHAT_EVENT, TOOL_STAGE } from '@/config/chatConstants';
 import {
   parseModelStreamErrorEvent,
+  parsePermissionRequestEvent,
   parseToolStatusEvent,
   toEventText,
 } from '@/utils/chatMessages';
-import type { ChatEvent, ChatMessage, ChatMessageBlock } from '@/types/chat';
+import type { ChatEvent, ChatMessage, ChatMessageBlock, PermissionRequestEvent } from '@/types/chat';
 
 function ensureTiming(message: ChatMessage) {
   if (!message.timing) {
@@ -75,8 +76,19 @@ export function handleStreamEvent(
   sessionId: string,
   setReasoningText: (sessionId: string, value: string) => void,
   setReasoningMessageId: (sessionId: string, messageId: string) => void,
+  onPermissionRequest?: (sessionId: string, request: PermissionRequestEvent) => void,
 ) {
   const text = toEventText(event.eventData);
+
+  // 1008 PERMISSION_REQUEST：模型请求用户授权文件/文件夹访问
+  // 后端发出此事件后会中断工具循环，等待前端处理
+  if (event.eventType === CHAT_EVENT.permissionRequest) {
+    const req = parsePermissionRequestEvent(event.eventData);
+    if (req && onPermissionRequest) {
+      onPermissionRequest(sessionId, req);
+    }
+    return;
+  }
 
   if (event.eventType === CHAT_EVENT.reasoning) {
     const timing = ensureTiming(assistantMessage);

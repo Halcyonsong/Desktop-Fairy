@@ -12,7 +12,8 @@ public enum ChatEventTypeEnum {
     INTERRUPTED(1004, "中断事件"),
     ERROR(1005, "错误事件"),
     TOOL_STATUS(1006, "工具状态事件"),
-    TOOL_RESULT(1007, "工具结果事件");
+    TOOL_RESULT(1007, "工具结果事件"),
+    PERMISSION_REQUEST(1008, "权限申请事件");
 
     private final int value;
     private final String desc;

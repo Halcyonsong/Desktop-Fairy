@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { useSessionFileStore } from '@/stores/sessionFileStore';
+import { useSessionFolderStore } from '@/stores/sessionFolderStore';
 import type { SystemPromptEntry, SystemPromptSlot } from '@/types/chat';
 
 export const STORAGE_KEY = 'desktop-fairy.chat-preferences.v1';
@@ -120,10 +121,11 @@ export const useChatPreferencesStore = defineStore('chatPreferences', () => {
   const selectedPromptSlot = ref<SystemPromptSlot>(snapshot.selectedPromptSlot ?? 'default');
   const toolCallEnabled = ref(snapshot.toolCallEnabled);
 
-  // 当当前会话有已授权文件时，工具调用被锁定（必须开启）
+  // 当当前会话有已授权文件或文件夹时，工具调用被锁定（必须开启）
   const toolCallLocked = computed(() => {
     const sessionFileStore = useSessionFileStore();
-    return sessionFileStore.hasFiles;
+    const sessionFolderStore = useSessionFolderStore();
+    return sessionFileStore.hasFiles || sessionFolderStore.hasFolders;
   });
 
   // 实际生效的工具调用开关：被锁定时强制 true

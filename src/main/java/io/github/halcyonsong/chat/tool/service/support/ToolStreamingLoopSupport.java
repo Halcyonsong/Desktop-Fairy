@@ -7,7 +7,9 @@ import io.github.halcyonsong.chat.stream.service.support.stream.ChatStreamState;
 import io.github.halcyonsong.chat.tool.enums.ToolChatStageEnum;
 import io.github.halcyonsong.chat.tool.enums.ToolLoopDecisionEnum;
 import io.github.halcyonsong.chat.tool.pojo.PendingMediaAttachment;
+import io.github.halcyonsong.chat.tool.pojo.vo.PermissionRequestEventVO;
 import io.github.halcyonsong.chat.tool.pojo.vo.ToolStatusEventVO;
+import io.github.halcyonsong.chat.tool.service.support.status.PermissionRequestState;
 import io.github.halcyonsong.chat.tool.service.support.status.ToolLoopRuntimeState;
 import io.github.halcyonsong.chat.tool.service.support.status.ToolRoundState;
 import io.github.halcyonsong.chat.tool.tool.ToolFunctionFactory;
@@ -265,6 +267,11 @@ public class ToolStreamingLoopSupport {
                     roundState.getToolSummaryText()
             ));
         }
+        if (runtimeState.hasPendingPermissionRequest()) {
+            bridgeEvents.add(buildPermissionRequestEvent(runtimeState.getPendingPermissionRequest()));
+            runtimeState.clearPendingPermissionRequest();
+            return Flux.fromIterable(bridgeEvents);
+        }
         // 判断是否继续下一轮
         if (decision == ToolLoopDecisionEnum.CONTINUE) {
             bridgeEvents.add(buildDecisionEvent(
@@ -306,6 +313,19 @@ public class ToolStreamingLoopSupport {
                 "模型未显式要求继续，系统结束本次处理。"
         ));
         return Flux.fromIterable(bridgeEvents);
+    }
+
+    private ChatEventVO buildPermissionRequestEvent(PermissionRequestState requestState) {
+        PermissionRequestEventVO eventVO = PermissionRequestEventVO.builder()
+                .requestType(requestState.getRequestType())
+                .absolutePath(requestState.getAbsolutePath())
+                .reason(requestState.getReason())
+                .build();
+
+        return ChatEventVO.builder()
+                .eventType(ChatEventTypeEnum.PERMISSION_REQUEST.getValue())
+                .eventData(eventVO)
+                .build();
     }
 
     // 判断是否需要补充轮次分隔符

@@ -2,6 +2,7 @@ import { chatApi } from '@/api';
 import { uiText } from '@/config/uiText';
 import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
+import { usePermissionRequestStore } from '@/stores/permissionRequestStore';
 import { useSessionFileStore } from '@/stores/sessionFileStore';
 import {
   applyHistoryPage,
@@ -176,6 +177,7 @@ export async function sendWorkbenchMessage(
   const modelSourceStore = useModelSourceStore();
   const chatPreferencesStore = useChatPreferencesStore();
   const sessionFileStore = useSessionFileStore();
+  const permissionRequestStore = usePermissionRequestStore();
   if (!modelSourceStore.selectedChatModelConfig) {
     state.errorMessage.value = uiText.errors.modelRequired;
     return;
@@ -233,6 +235,7 @@ export async function sendWorkbenchMessage(
           sessionId,
           reasoning.setReasoningText,
           reasoning.setReasoningMessageId,
+          (sid, req) => permissionRequestStore.setRequest(sid, req),
         );
         commitMessageChange();
       },

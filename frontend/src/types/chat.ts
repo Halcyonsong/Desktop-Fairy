@@ -93,6 +93,15 @@ export interface ChatHistoryPage {
   total: number;
 }
 
+// 1008 PERMISSION_REQUEST 事件的 eventData 结构
+// 对应后端 PermissionRequestEventVO
+export interface PermissionRequestEvent {
+  // FILE / FOLDER
+  requestType: string;
+  absolutePath: string;
+  reason: string;
+}
+
 export interface ChatEvent {
   eventData: unknown;
   eventType: ChatEventType;

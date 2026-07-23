@@ -4,13 +4,16 @@ import AppShell from '@/components/layout/AppShell.vue';
 import AuthorizedPathsBar from '@/components/chat/AuthorizedPathsBar.vue';
 import ChatComposer from '@/components/chat/ChatComposer.vue';
 import ChatHeader from '@/components/chat/ChatHeader.vue';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 import MessageList from '@/components/chat/MessageList.vue';
+import PermissionRequestBar from '@/components/chat/PermissionRequestBar.vue';
 import SessionSidebar from '@/components/session/SessionSidebar.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import { useChatPreferencesStore } from '@/stores/chatPreferencesStore';
 import { useBackendStatusStore } from '@/stores/backendStatusStore';
 import { useFairyChatStore } from '@/stores/fairyChatStore';
 import { useModelSourceStore } from '@/stores/modelSourceStore';
+import { usePermissionRequestStore } from '@/stores/permissionRequestStore';
 import { useSessionFileStore } from '@/stores/sessionFileStore';
 import { useSessionFolderStore } from '@/stores/sessionFolderStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -27,12 +30,50 @@ const fairyChatStore = useFairyChatStore();
 const chatPreferencesStore = useChatPreferencesStore();
 const sessionFileStore = useSessionFileStore();
 const sessionFolderStore = useSessionFolderStore();
+const permissionRequestStore = usePermissionRequestStore();
 const toast = useToastStore();
 
 const sessionSidebarRef = ref<InstanceType<typeof SessionSidebar> | null>(null);
 
 // 刷新历史成功提示的显示时长（毫秒）
 const REFRESH_SUCCESS_HINT_MS = 1200;
+
+// 消息操作确认弹窗状态
+const confirmDialogOpen = ref(false);
+const confirmDialogTitle = ref('');
+const confirmDialogMessage = ref('');
+const confirmDialogConfirmText = ref('');
+const pendingConfirmAction = ref<(() => void) | null>(null);
+
+function requestRollbackConfirm() {
+  if (fairyChatStore.selected) return;
+  confirmDialogTitle.value = uiText.chat.rollbackConfirmTitle;
+  confirmDialogMessage.value = uiText.chat.rollbackConfirmMessage;
+  confirmDialogConfirmText.value = uiText.chat.rollbackConfirmText;
+  pendingConfirmAction.value = () => workbench.rollbackLatestRoundToComposer();
+  confirmDialogOpen.value = true;
+}
+
+function requestDeleteConfirm() {
+  if (fairyChatStore.selected) return;
+  confirmDialogTitle.value = uiText.chat.deleteConfirmTitle;
+  confirmDialogMessage.value = uiText.chat.deleteConfirmMessage;
+  confirmDialogConfirmText.value = uiText.chat.deleteConfirmText;
+  pendingConfirmAction.value = () => workbench.deleteLatestRoundOnly();
+  confirmDialogOpen.value = true;
+}
+
+function handleConfirmDialogConfirm() {
+  confirmDialogOpen.value = false;
+  const action = pendingConfirmAction.value;
+  pendingConfirmAction.value = null;
+  action?.();
+}
+
+function handleConfirmDialogCancel() {
+  confirmDialogOpen.value = false;
+  pendingConfirmAction.value = null;
+}
 
 async function handleBatchDelete(sessionIds: string[]) {
   let successCount = 0;
@@ -116,10 +157,13 @@ async function handleSidebarSelect(sessionId: string) {
     fairyChatStore.selectTemporaryChat();
     sessionFileStore.reset();
     sessionFolderStore.reset();
+    permissionRequestStore.clear();
     return;
   }
 
   fairyChatStore.deselectTemporaryChat();
+  // 切换会话时清除待处理的权限申请
+  permissionRequestStore.clear();
   await workbench.loadSession(sessionId);
   // 加载该会话的已授权文件和文件夹列表
   await Promise.all([
@@ -173,6 +217,57 @@ async function handleRevokeFile(fileReferenceId: string) {
 
 async function handleRevokeFolder(folderReferenceId: string) {
   await sessionFolderStore.removeFolder(folderReferenceId);
+}
+
+// ===== 权限申请处理 =====
+const permissionBarRef = ref<InstanceType<typeof PermissionRequestBar> | null>(null);
+
+/** 批准权限申请：先走授权接口，再自动发送消息 */
+async function handleApprovePermission(extraContent: string) {
+  const sid = permissionRequestStore.sessionId;
+  const path = permissionRequestStore.absolutePath;
+  const isFile = permissionRequestStore.isFileRequest;
+
+  permissionRequestStore.clear();
+  permissionBarRef.value?.reset();
+
+  if (!sid || !path) return;
+
+  // 先执行授权
+  try {
+    if (isFile) {
+      await sessionFileStore.authorizeFile(sid, path);
+    } else {
+      await sessionFolderStore.authorizeFolder(sid, path);
+    }
+  } catch {
+    // 授权失败，toast 已在 store 中处理，不继续发送消息
+    toast.error(customText.permission.authorizeFailed);
+    return;
+  }
+
+  // 构造基础提示词并发送
+  const basePrompt = customText.permission.approveBase(path);
+  const message = extraContent ? `${basePrompt} ${extraContent}` : basePrompt;
+  await workbench.sendMessage(message);
+}
+
+/** 拒绝权限申请：直接发送拒绝消息 */
+async function handleRejectPermission(extraContent: string) {
+  const path = permissionRequestStore.absolutePath;
+
+  permissionRequestStore.clear();
+  permissionBarRef.value?.reset();
+
+  const basePrompt = customText.permission.rejectBase(path);
+  const message = extraContent ? `${basePrompt} ${extraContent}` : basePrompt;
+  await workbench.sendMessage(message);
+}
+
+/** 关闭权限申请：不发送任何消息，停止当前操作 */
+function handleDismissPermission() {
+  permissionRequestStore.clear();
+  permissionBarRef.value?.reset();
 }
 
 function handleComposerStop() {
@@ -257,7 +352,15 @@ onMounted(() => {
         );
       });
     }
-    void workbench.bootstrap();
+    await workbench.bootstrap();
+    // bootstrap 会自动加载第一个会话，需同步加载该会话的已授权文件和文件夹
+    const sid = workbench.activeSessionId;
+    if (sid) {
+      await Promise.all([
+        sessionFileStore.loadForSession(sid),
+        sessionFolderStore.loadForSession(sid),
+      ]);
+    }
     void modelSourceStore.bootstrap();
   }
 
@@ -311,6 +414,13 @@ onMounted(() => {
               @revoke-file="handleRevokeFile"
               @revoke-folder="handleRevokeFolder"
             />
+            <PermissionRequestBar
+              v-if="!fairyChatStore.selected"
+              ref="permissionBarRef"
+              @approve="handleApprovePermission"
+              @reject="handleRejectPermission"
+              @dismiss="handleDismissPermission"
+            />
             <MessageList
               :session-key="activeSessionId"
               :messages="currentMessages"
@@ -321,8 +431,8 @@ onMounted(() => {
               :loading-more-history="fairyChatStore.selected ? false : workbench.loadingMoreHistory"
               :sending="currentSending"
               @load-more="fairyChatStore.selected ? undefined : workbench.loadMoreHistory()"
-              @rollback-latest-round="fairyChatStore.selected ? undefined : workbench.rollbackLatestRoundToComposer()"
-              @delete-latest-round="fairyChatStore.selected ? undefined : workbench.deleteLatestRoundOnly()"
+              @rollback-latest-round="requestRollbackConfirm()"
+              @delete-latest-round="requestDeleteConfirm()"
             />
             <ChatComposer
               :sending="currentSending"
@@ -344,7 +454,7 @@ onMounted(() => {
               @update:draft="fairyChatStore.selected ? fairyChatStore.setDraft($event) : workbench.setComposerDraft($event)"
               @send="handleComposerSend"
               @stop="handleComposerStop"
-              @rollback="fairyChatStore.selected ? undefined : workbench.rollbackLatestRoundToComposer()"
+              @rollback="requestRollbackConfirm()"
               @select-model="modelSourceStore.selectChatModel"
               @update:temperature-input="modelSourceStore.setTemperatureInput"
               @update:max-tokens-input="modelSourceStore.setMaxTokensInput"
@@ -356,5 +466,15 @@ onMounted(() => {
         </AppShell>
       </div>
     </Transition>
+
+    <ConfirmDialog
+      :open="confirmDialogOpen"
+      :title="confirmDialogTitle"
+      :message="confirmDialogMessage"
+      :confirm-text="confirmDialogConfirmText"
+      :cancel-text="uiText.chat.confirmCancel"
+      @confirm="handleConfirmDialogConfirm"
+      @cancel="handleConfirmDialogCancel"
+    />
   </div>
 </template>

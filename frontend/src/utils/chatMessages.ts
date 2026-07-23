@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   ChatMessageBlock,
   ModelStreamErrorEvent,
+  PermissionRequestEvent,
   ToolStatusEvent,
   ToolStage,
   ErrorType,
@@ -122,6 +123,29 @@ export function parseModelStreamErrorEvent(eventData: unknown): ModelStreamError
     retryable: value.retryable === true,
     partialOutput: value.partialOutput === true,
     partialContent: typeof value.partialContent === 'string' ? value.partialContent : '',
+  };
+}
+
+/** 解析 1008 PERMISSION_REQUEST 事件的 eventData */
+export function parsePermissionRequestEvent(eventData: unknown): PermissionRequestEvent | null {
+  if (
+    typeof eventData !== 'object'
+    || eventData === null
+    || typeof (eventData as { requestType?: unknown }).requestType !== 'string'
+    || typeof (eventData as { absolutePath?: unknown }).absolutePath !== 'string'
+  ) {
+    return null;
+  }
+
+  const value = eventData as {
+    requestType: string;
+    absolutePath: string;
+    reason?: unknown;
+  };
+  return {
+    requestType: value.requestType,
+    absolutePath: value.absolutePath,
+    reason: typeof value.reason === 'string' ? value.reason : '',
   };
 }
 

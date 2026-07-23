@@ -6,6 +6,7 @@ export const CHAT_EVENT = {
   error: 1005,
   toolStatus: 1006,
   toolResult: 1007,
+  permissionRequest: 1008,
 } as const;
 
 // 1006 TOOL_STATUS / 1007 TOOL_RESULT 的 stage 取值

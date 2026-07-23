@@ -22,6 +22,7 @@ public class ToolFunctionFactory {
                 basicToolFunctions,
                 fileToolFunctions,
                 new ToolLoopControlFunctions(runtimeState),
+                new PermissionRequestToolFunctions(runtimeState),
                 new SessionFileToolRuntimeFunctions(sessionFileService, authorizedFileReadSupport, sessionId, runtimeState),
                 new SessionFolderToolRuntimeFunctions(authorizedFolderReadSupport, sessionId)
         };

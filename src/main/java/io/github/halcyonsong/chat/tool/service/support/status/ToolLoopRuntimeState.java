@@ -33,13 +33,15 @@ public class ToolLoopRuntimeState {
     private String currentRoundDecisionReason = "";
     // 待处理媒体附件
     private final List<PendingMediaAttachment> pendingMediaAttachments = new ArrayList<>();
-    // 构造函数
+    // 待处理权限申请
+    private PermissionRequestState pendingPermissionRequest;
+
     public ToolLoopRuntimeState(int maxRounds, int maxToolCalls, int maxDurationSeconds) {
         this.maxRounds = maxRounds;
         this.maxToolCalls = maxToolCalls;
         this.maxDurationSeconds = maxDurationSeconds;
     }
-    // 工具调用计数加一，防止切块导致重复计数
+
     public boolean registerToolCall(String toolCallKey) {
         if (!StringUtils.hasText(toolCallKey)) {
             return false;
@@ -50,7 +52,7 @@ public class ToolLoopRuntimeState {
         }
         return added;
     }
-    // 解析工具调用
+
     public String resolveToolCallKey(int round, AssistantMessage.ToolCall toolCall) {
         if (toolCall == null) {
             return "round-" + round + "-unknown-tool-call";
@@ -65,60 +67,78 @@ public class ToolLoopRuntimeState {
 
         return "round-%d|name=%s|args=%s".formatted(round, name, arguments);
     }
-    // 标记继续
+
     public void markContinue(String reason) {
         currentRoundDecision = ToolLoopDecisionEnum.CONTINUE;
-        currentRoundDecisionReason = normalizeReason(reason);
+        currentRoundDecisionReason = normalizeText(reason);
     }
-    // 标记完成
+
     public void markFinish(String reason) {
         currentRoundDecision = ToolLoopDecisionEnum.FINISH;
-        currentRoundDecisionReason = normalizeReason(reason);
+        currentRoundDecisionReason = normalizeText(reason);
     }
-    // 重置当前轮次决策
+
     public void resetCurrentRoundDecision() {
         currentRoundDecision = null;
         currentRoundDecisionReason = "";
     }
-    // 检查是否超过轮次限制
+
     public boolean exceedsRoundLimit(int round) {
         return round > maxRounds;
     }
-    // 检查是否超过工具调用次数限制
+
     public boolean exceedsToolCallLimit() {
         return toolCallCount >= maxToolCalls;
     }
-    // 检查是否超过持续时间限制
+
     public boolean exceedsDurationLimit() {
         long elapsedSeconds = Duration.between(startedAt, Instant.now()).getSeconds();
         return elapsedSeconds >= maxDurationSeconds;
     }
-    // 设置最新工具调用摘要
+
     public void setLatestToolSummary(String latestToolSummary) {
         this.latestToolSummary = latestToolSummary == null ? "" : latestToolSummary;
     }
-    // 添加待处理媒体附件
+
     public void addPendingMediaAttachment(PendingMediaAttachment attachment) {
         if (attachment != null) {
             pendingMediaAttachments.add(attachment);
         }
     }
-    // 检查是否有待处理媒体附件
+
     public boolean hasPendingMediaAttachments() {
         return !pendingMediaAttachments.isEmpty();
     }
-    // 获取待处理媒体附件快照
+
     public List<PendingMediaAttachment> getPendingMediaAttachmentsSnapshot() {
         return Collections.unmodifiableList(pendingMediaAttachments);
     }
-    // 消费待处理媒体附件
+
     public List<PendingMediaAttachment> consumePendingMediaAttachments() {
         List<PendingMediaAttachment> snapshot = new ArrayList<>(pendingMediaAttachments);
         pendingMediaAttachments.clear();
         return snapshot;
     }
-    // 规范化决策原因
-    private String normalizeReason(String reason) {
-        return StringUtils.hasText(reason) ? reason.trim() : "";
+
+    public void requestPermission(String requestType, String absolutePath, String reason) {
+        this.pendingPermissionRequest = PermissionRequestState.builder()
+                .requestType(normalizeText(requestType))
+                .absolutePath(normalizeText(absolutePath))
+                .reason(normalizeText(reason))
+                .build();
+    }
+
+    public boolean hasPendingPermissionRequest() {
+        return pendingPermissionRequest != null
+                && StringUtils.hasText(pendingPermissionRequest.getRequestType())
+                && StringUtils.hasText(pendingPermissionRequest.getAbsolutePath());
+    }
+
+    public void clearPendingPermissionRequest() {
+        this.pendingPermissionRequest = null;
+    }
+
+    private String normalizeText(String text) {
+        return StringUtils.hasText(text) ? text.trim() : "";
     }
 }

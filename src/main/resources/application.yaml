@@ -1,6 +1,8 @@
 spring:
   application:
     name: Desktop-Fairy
+  main:
+    lazy-initialization: true
   profiles:
     include:
       - api

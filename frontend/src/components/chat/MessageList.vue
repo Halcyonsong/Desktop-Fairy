@@ -91,7 +91,7 @@ function statusText(status: ChatMessage['status']) {
           :speaker-label="speakerLabel(message.role)"
           :status-text="statusText(message.status)"
           :show-rollback="message.id === latestUserMessageId && isLatestRoundMessage(message)"
-          :show-delete="message.id === latestAssistantMessageId && isLatestRoundMessage(message)"
+          :show-delete="(message.id === latestUserMessageId || message.id === latestAssistantMessageId) && isLatestRoundMessage(message)"
           :sending="sending"
           @rollback="emit('rollbackLatestRound')"
           @delete="emit('deleteLatestRound')"
